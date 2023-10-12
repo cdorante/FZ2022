@@ -1,0 +1,651 @@
+---
+title: "Workshop 3 Solution, Algorithms and Data Analysis"
+author: "Alberto Dorantes, Ph.D."
+date: "Oct 11, 2023"
+
+abstract: "In this workshop we will keep practicing data management for financial massive data and also learn about the Logistic regression model." 
+
+format: 
+  html:
+    toc: true
+    toc-title: Content    
+    toc-location: left
+    toc-float: true
+    theme: united
+    highlight-style: zenburn
+    number-sections: true
+    fontsize: 0.9em
+    html-math-method: katex
+    
+knitr:
+  opts_chunk: 
+    warning: false
+    message: false
+---
+
+```{r global_options}
+#| include: false 
+#| warning: false
+#| message: false
+#| fig-width: 12
+#| fig-height: 8
+
+#knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+#                      warning=FALSE, message=FALSE)
+```
+
+# Introduction
+
+We will start working with the dataset of the Final Project (Situación Problema). This dataset has quarterly financial data of all public firms that belong to the New York Exchange and the NASDAQ.
+
+We will learn a) what is winsorization and why it is important, b) estimate and interpret a logistic regression, and c) trainning vs testing samples, and d) creating a confusion matrix.
+
+Before challenge 1 (winsorization), I start with challenge 2 (algorithm for the many-to-one merge) to better organize the data management processes.
+
+# CHALLENGE 2: Algorithm to do many-to-one merge
+
+It is very recommended to write the steps needed for this algorithm before we write the code. The steps for this algorithms can be:
+
+-   Read/load the uspanel dataset to the environment
+
+-   Download the monthly market index of the S&P500 (\^GSPC) from 2009 to date
+
+-   Convert (collapse) from monthly to quarterly index selecting the last index of each quarter
+
+-   Calculate market quarterly returns
+
+-   Do a many-to-one merge to add a new column to the uspanel dataset for the market quarterly return
+
+-   Now I read the excel file and load the 3 sheets in 3 datasets:
+
+```{r}
+library(plm)
+library(dplyr)
+uspanel <- read.csv("dataus2023.csv")
+usfirms <- read.csv("firmsus2023.csv")
+
+```
+
+The uspanel dataset has historical data of many financial-statement variables of US public firms that belong to the New York Exchange and the NASDAQ.
+
+The usfirms dataset is a catalog of all US public firms with general information such as firm name and industry classification.
+
+Now I download the US monthly market index from the last Q of 1999 to the Q2 of 2023. I start with the Q4 of 1999 so that I could calculate returns for the Q1 of 2000.
+
+```{r}
+library(quantmod)
+getSymbols("^GSPC", from="1999-10-01", to= "2023-06-30",
+            periodicity="monthly", src="yahoo")
+```
+
+Now I convert / collapse this monthly dataset in to a quarterly dataset to have the same *granularity* than the uspanel dataset. For each quarter (3-month period) I need to get ONLY the last month index in order to correctly calculate quarterly returns.
+
+The to.quarterly function from quantmod can do this collapse getting the value of the last month for each quarter:
+
+```{r}
+QGSPC <- to.quarterly(GSPC)
+# I keep only the adjusted column, which has the market index:
+QGSPC = Ad(QGSPC)
+names(QGSPC)= c("SP500")
+```
+
+I calculate quarterly and annual cc returns for the market with the difference function of the log index:
+
+```{r}
+QGSPC$mkqret = diff(log(QGSPC$SP500))
+QGSPC$mkyret = diff(log(QGSPC$SP500),lag=4)
+# I delete the first row that has NA values for both returns, and it is from 1999:
+QGSPC = QGSPC[2:nrow(QGSPC),]
+
+
+```
+
+In order to **merge** the uspanel with this QGSPC dataset I need to have a **common column** for the quarter so that R can do the match by quarter.
+
+The QGSPC has the quarter as index, not as column! It is important to note that all xts and zoo datasets have an index that is not part of the columns. I can create a data frame that has the index as column as follows:
+
+```{r}
+QGSPCdf<-data.frame(qdate=index(QGSPC),coredata(QGSPC[,2:3]))
+
+```
+
+The index function gets the index content, while the coredata function gets only the column data of the dataset.
+
+Besides having the same column in both datasets, both columns must be of the same data type. Then I check which data type each q column has:
+
+```{r}
+class(uspanel$q)
+class(QGSPCdf$qdate)
+```
+
+The qdate column of the QGSPCdf is a "yearqtr" variable, while the q column of the uspanel is character variable. I have to decide which column I change to have both with the same type and also the same format.
+
+I will create a q column in the QGSPCdf dataset with the same format as the q in the uspanel.
+
+The q in the uspanel is a character variable that starts with 4 digits for the year, then a "q" and then the \# of the quarter. Example: 2020q1, 2020q2.
+
+Then, I create a new column in the QGSPCdf following this format:
+
+```{r}
+library(lubridate)
+# I use the year and quarter functions from the lubridate library
+# The year function extracts the year of a date, and the quarter extrats the quarter
+QGSPCdf$q <- paste0(year(QGSPCdf$qdate),         # Convert dates to quarterly
+                             "q",
+                             quarter(QGSPCdf$qdate))
+# I check that both columns have the same data type, and have the same format:
+class(QGSPCdf$q)
+class(uspanel$q)
+
+head(QGSPCdf$q)
+head(uspanel$q)
+
+```
+
+The paste0 function concatenates strings of characters.
+
+Now I can do the many-to-1 merge of both dataset indicating that **q is the common column**.
+
+I use the left_join function from the dplyr package instead of the merge function. I do this since the merge function does not keep the original sorting of the uspanel dataset.
+
+```{r}
+# I delete the first  column (the qdate)
+QGSPCdf = QGSPCdf[,c(-1)]
+
+uspanel<-left_join(uspanel,QGSPCdf,by="q")
+
+# I display key columns of 1 quarter:
+library(dplyr)
+head(uspanel %>% select(firm,q, adjprice, mktret) %>% filter(q=="2023q1"))
+
+```
+
+The market return seems to be well merged since its value is repeated for cases with the same quarter.
+
+Then the *mktret* column was added to the uspanel. The series of the market return was merged for each firm, so R did a many-to-1 merge!
+
+# CHALLENGE 1: Winsorization of variables
+
+You have to do your own research about winsorization. Explain it with your words (pay attention in class)
+
+You have to install the statar package. You have to winsorize the following ratio:
+
+-   Earnings per share deflated by price
+
+Using the histogram decide which might be a good level of winsorization for each ratio.
+
+**WINSORIZATION IS THE PROCESS OF FLATTENING EXTREME (OUTLIERS) OBSERVATIONS OF A VARIABLE WITH THE PURPOSE OF AVOIDING UNRELIABLE ESTIMATIONS OF BETA COEFFICIENTS WHEN INCLUDING THAT VARIABLE AS EXPLANATORY VARIABLE IN AN ECONOMETRIC MODEL.**
+
+**THE WINSORIZATION PROCESS CAN BE APPLIED TO HIGH OR LOW VALUES OF THE VARIABLE. FOR HIGH VALUES WE CAN INDICATE FROM WHICH PERCENTILE WE CONSIDER THE VALUES AS OUTLIERS, THEN THOSE VALUES ABOVE THAT PERCENTILE IS REPLACE WITH THE VALUE OF THAT PECENTILE. FOR LOW VALUES WE INDICATE FROM WHICH PERCENTILE WE CONSIDER THE VALUES AS OUTLIERS, THEN THOSE VALUES BELOW THAT PERCENTILE IS REPLACE WITH THE VALUE OF THAT PERCENTILE.**
+
+**IN R, WE CAN USE THE FUNCTION winsorize FROM THE statar PACKAGE TO DO THE WINSORIZATION OF A VARIABLE.**
+
+Now I generate the variables needed for the ratio:
+
+```{r}
+# Adding the variables for gross profit, EBIT and Net Income:
+uspanel <- uspanel %>%
+  mutate(
+    grossprofit = revenue - cogs,
+    ebit = grossprofit - sgae, 
+    netincome = ebit + otherincome + extraordinaryitems - finexp - incometax
+  )
+
+```
+
+I generate the ratio:
+
+```{r}
+# I generate EPS and EPSP (deflated by price)
+uspanel <- uspanel %>%
+  mutate(
+    eps = ifelse(sharesoutstanding==0,NA,netincome / sharesoutstanding),
+    epsp= ifelse(originalprice==0,NA,eps / uspanel$originalprice))
+
+```
+
+**NOW I START THE WINSORIZATION PROCESS FOR EPSP:**
+
+**I START CHECKING THE HISTOGRAM TO DECIDE WHICH LEVEL OF WINSORIZATION I CAN APPLY TO BOTH SIDES OF THE VALUES (HIGH AND LOW VALUES):**
+
+```{r}
+hist(uspanel$epsp)
+```
+
+**I SEE EXTREME VALUES TO THE LEF AND TO THE RIGHT WITH SIMILAR MAGNITUDE. THE WINSORIZE FUNCTION AUTOMATICALLY DETECTS THE BEST PERCENTILES TO THE LEFT AND TO THE RIGHT ACCORDING TO THE DISTRIBUTION OF THE VARIABLE:**
+
+```{r}
+# I load the library for winsorization:
+library(statar)
+uspanel$epspw <- winsorize(uspanel$epsp)
+# I check the distribution of this new winsorized ratio:
+hist(uspanel$epspw)
+```
+
+THE RANGE FOR THE WINSORIZED OPERATING EPS DEFLATED BY PRICE IS FROM -0.30 TO ABOUT 0.30. FOR THIS RATIO, THIS RANGE IS OK SINCE WE CAN HAVE SOME FIRMS THAT IN THE PAST THE HAD VERY NEGATIVE NETINCOME SO THAT THE EPS DEFLATED BY PRICE CAN BE NEGATIVE, BUT A FRACTION LESS THAN ONE (IN MAGNITUDE). IF OPERATING EPS DEFLATED BY PRICES IS +0.30 THIS MEANS THAT IF THE NETINCOME WERE DISTRIBUTED AMONG SHAREHOLDERS, THEN FOR EACH \$1.0 INVESTED IN SHARES, EACH SHAREHOLDER MIGHT RECEIVE ABOUT 30 CENTS.
+
+# CHALLENGE 3: Logistic regression models with lagged values
+
+Design and run a logistic regression to examine whether earnings per share deflated by price winsorized (epspw) is related to the probability that the future quarterly stock returns is higher than the future market quarterly return.
+
+**You have to interpret the model**
+
+## SOLUTION
+
+The dependent variable of a logistic model is the probability that an event happens. However, the way we introduce the values of the dependent variable in the model is using a binary variable (1/0 or TRUE/FALSE). I declare that the EVENT happens if the future stock return is higher than the future market return.
+
+The independent variable(s) can be numeric or categorical, as in the case of a multiple regression model.
+
+I have to create the dependent variable of the model. I will assign 1 when the future stock return is higher than the future market return; and =0 otherwise.
+
+### Creating the dependent variable
+
+I need to generate the stock quarterly cc return for each firm-quarter:
+
+Since I have to calculate returns, I need to use the diff function. Then, I need to indicate that the uspanel dataset is panel data:
+
+```{r}
+uspanel <- pdata.frame(uspanel, index= c("firm","q"))
+```
+
+```{r}
+uspanel$stockqret= diff(log(uspanel$adjprice))
+uspanel$stockyret= diff(log(uspanel$adjprice),lag=4)
+```
+
+Since R knows that uspanel is a panel data (firm data is stacked one over another one), then when there is a change of firm, the stock return for the first period will NOT be calculated!
+
+To make sure that R did the correct calculation, I can look at few cases for 1 firm:
+
+```{r}
+# I convert the q column to character; when I converted the data into a pdata.frame, it changed the type of q to factor. This creates some problems, so I change it to character:
+uspanel$q = as.character((uspanel$q))
+uspanel %>% select(firm,q,adjprice,stockqret, stockyret) %>% 
+       filter(firm=="AAPL",q>="2022q1") %>% head(10)
+
+```
+
+It looks ok since the stock return is NA for the first quarter of each firm.
+
+Now I can create variables for the FUTURE quarterly an annual return for both the stocks and the market:
+
+```{r}
+uspanel$F1stockqret <- plm::lag(uspanel$stockqret,-1)
+uspanel$F1mkqret <- plm::lag(uspanel$mkqret,-1)
+
+uspanel$F1stockyret <- plm::lag(uspanel$stockyret,-1)
+uspanel$F1mkyret <- plm::lag(uspanel$mkyret,-1)
+
+```
+
+It is important to use the lag function from the plm package. The lag function exist is several packages, but we need to use it from plm.
+
+The -1 parameter of the lag function means that I want to get the FORWARD value (not the LAGGED value) 1 quarter in the future.
+
+Now I can create the binary variable as follows:
+
+```{r}
+uspanel$F1stockqwin = ifelse(uspanel$F1stockqret>uspanel$F1mkqret,1,0)
+uspanel$F1stockywin = ifelse(uspanel$F1stockyret>uspanel$F1mkyret,1,0)
+
+```
+
+I can check how many rows ended up with 1's and 0's:
+
+```{r}
+table(uspanel$F1stockqwin)
+table(uspanel$F1stockywin)
+```
+
+I can view few cases to make sure that I did the correct calculation:
+
+```{r}
+uspanel %>% select(firm, q, stockqret,mkqret, F1stockqret, F1mkqret, F1stockqwin) %>%
+       filter(q>="2022q1") %>% head(8)
+```
+
+The calculation of the F1stockqwin looks ok; when the future stock return is higher than the market future qreturn, F1stockwin=1; =0 otherwise.
+
+Now I can run the logistic regression with the glm function:
+
+```{r}
+
+# Runing the model with the winsorized oepsp:
+model1 <- glm(F1stockywin ~ epspw, data= uspanel, family="binomial",na.action=na.omit)
+summary(model1)
+
+# Runing the model with the original epsp (before winsorization):
+model1a <- glm(F1stockywin ~ epsp, data= uspanel, family="binomial",na.action=na.omit)
+summary(model1a)
+
+```
+
+I run the model with the winsorized and the original (before winsorization). Although the sign and significance was the same, the magnitude of the epsp beta coefficient significantly changed and also its pvalue. So, it the results using the winsorized variable is much more reliable.
+
+**INTERPRETATION:**
+
+**THE INTERPRETATION OF A LOGISTIC MODEL IS SIMILAR TO THAT OF THE LINEAR REGRESSION MODEL, BUT THERE IS AN IMPORTANT DIFFERENCE.**
+
+**IN TERMS OF SIGN AND SIGNIFICANCE OF THE INDEPENDENT VARIABLE, WE INTERPRET THE LOGISTIC REGRESSION IN A SIMILAR WAY. IN THIS CASE, I CAN INTERPRET THE COEFFICIENT AND SIGNIFICANCE OF EARNINGS PER SHARE AS FOLLOWS:**
+
+**SINCE THE BETA1 COEFFICIENT IS POSITIVE AND SIGNIFICANCE, THEN EARNINGS PER SHARE (DEFLATED BY PRICE) IS POSITIVELY AND SIGNIFICANTLY RELATED TO THE PROBABILITY THAT THE STOCK WILL HAVE A HIGHER RETURN IN THE FUTURE COMPARED TO THE FUTURE MARKET RETURN. IN OTHER WORDS, THE HIGHER THE EPSPW, THE MORE LIKELY THAT THE STOCK WILL BEAT THE MARKET RETURN ONE QUARTER LATER.**
+
+**THE INTERPRETATION OF THE MAGNITUDE OF THE COEFFICIENT IS DIFFERENT THAN IN THE CASE OF LINEAR REGRESSION.**
+
+**FIRST WE NEED TO CALCULATE THE EXPONENCIAL OF THE BETA1 COEFFICIENT:**
+
+```{r}
+betaepsw_odds = exp(model1$coefficients[2]*1)
+betaepsw_odds
+```
+
+This new beta coefficient of`r betaepsw_odds` can be interpreted as:
+
+FOR EACH +1 CHANGE IN EPSPW, IT IS EXPECTED THAT THE ODDS RATIO (THE PROBABILITY THAT THE STOCK BEATS THE MARKET WITH RESPECT TO THE PROBABILITY THAT THE STOCK DO NOT BEAT THE MARKET) INCREASES WILL CHANGE IN `r betaepsw_odds` UNITS. IN OTHER WORDS, A FIRM A HAS AN EPSPW THAT IS +1.00 HIGHER THAN A FIRM B, THEN THE FIRM A WILL BE `r betaepsw_odds` TIMES MORE LIKELY TO BEAT THE MARKET COMPARED TO FIRM B.
+
+THIS SOUNDS WEIRD SINCE A CHANGE OF +1.00 UNIT IN EPSPW IS ALMOST IMPOSSIBLE IN THE MARKET; EPSPW IS A VARIABLE THAT USUALLY RANGES BETWEEN -0.3 AND +0.30. THEN, IT IS CONVENIENT TO DO ANOTHER CALCULATION FOR THE BETA COEFFICIENT:
+
+```{r}
+betaepsw_odds = exp(model1$coefficients[2]*0.1)
+betaepsw_odds
+```
+
+I MULTIPLIED THE COEFFICIENT TIMES 0.1 TO CALCULATE THE BETA COEFFICIENT AS A PARTIAL CHANGE OF THE ODDS RATIO FOR A CHANGE OF +0.1 IN EPSPW.
+
+IN THIS CASE, IF A FIRM A IMPROVES ITS EPSPW IN +0.1 UNIT FROM ONE QUARTER TO THE NEXT, THEN THIS FIRM WILL BE `r betaepsw_odds` MORE LIKELY TO BEAT THE MARKET COMPARED TO CASE THAT THE FIRM DOES NOT CHANGE ITS EPSPW.
+
+YOU CAN INTERPRET THE MAGNITUDE OF THE COEFFICIENT USING THE CASE OF 1 FIRM THAT INCREASES (OR DECREASES) ITS EPSPW FROM ONE QUARTER TO THE NEXT, OR COMPARING 2 FIRMS IN THE SAME QUARTER WITH DIFFERENT EPSPW VALUES.
+
+ANOTHER VERSION OF THE MODEL:
+
+Remember that all income-statement variables are YTD amounts, and when the fiscalmonth column = 12, that indicates the quarter where the fiscal year ends. This makes the earnings per share to be calculated with YTD net income amounts. This can be confusing for the model since the eps will always grow for all firms in any quarter during any year since these are YTD amounts. We can calculate eps using the actual net income for each quarter (not YTD) and see how the model improves.
+
+```{r}
+uspanel <- uspanel %>%
+  arrange(firm, q) %>%
+  group_by(firm) %>%
+  mutate(
+    netincome_q = ifelse(fiscalmonth==3,netincome,netincome - lag(netincome))
+  )
+
+uspanel %>% select(firm, q, yearf,fiscalmonth, revenue, ebit, netincome, netincome_q) %>%
+  filter(firm=="AAPL",yearf>=2021)
+
+```
+
+```{r}
+uspanel <- data.frame(uspanel) %>% 
+  mutate(
+    eps_q = ifelse(sharesoutstanding==0,NA,netincome_q / sharesoutstanding),
+    epsp_q= ifelse(originalprice==0,NA,eps_q / uspanel$originalprice)
+    )
+uspanel %>% select(firm, q, yearf,fiscalmonth, eps_q, epsp_q) %>%
+  filter(firm=="AAPL",yearf>=2022)
+
+```
+
+```{r}
+uspanel$epsp_qw = winsorize(uspanel$epsp_q)
+hist(uspanel$epsp_qw)
+```
+
+```{r}
+model2 <- glm(F1stockywin ~ epsp_qw, data= uspanel, family="binomial",na.action=na.omit)
+summary(model2)
+```
+
+# CHALLENGE 4: Running your first Machine Learning model
+
+Create a dataset with the following columns:
+
+-   Future quarterly stock return (1 quarter later)
+-   F1r_above_market (1=beat the market in the corresponding quarter; 0= otherwise)
+-   Earnings per share deflated by price (epsp).
+
+Create a training and testing sample: randomly select 80% of observations for the training sample and 20% for the testing sample.
+
+Using the training sample, run the same logistic model to check whether epsp has explanatory power for the probability that the stock beats the market.
+
+Create and interpret the confusion matrix
+
+## SOLUTION
+
+The variables are already created in the above sections.
+
+I create the training and testing random samples:
+
+```{r}
+set.seed(123456)
+
+# Shuffle row indices:
+rows_shuffled<-sample(nrow(yuspanel))
+
+# Randomly order data
+shuffled_uspanel <- yuspanel[rows_shuffled, ]
+
+
+```
+
+To better organize the data of the model, I will keep ONLY the variables I need for the machine learning model:
+
+```{r}
+shuffled_uspanel <- shuffled_uspanel %>% 
+              select(firm, q, epspw, F1stockywin, stockyret,mkyret)
+
+```
+
+I kept the independent and the dependent variable (F1stockwin), and also the returns of the stocks and the market (just in case).
+
+Try an 80/20 split
+
+Now that the dataset is randomly ordered. I can split the first 80% of it into a training set, and the last 20% into a test set.
+
+I can do this by choosing a split point of approx 80% of the shffle data rows:
+
+```{r}
+# Determine row to split on: split
+split <- round(nrow(shuffled_uspanel)*.80)
+split
+# Create train
+train <- shuffled_uspanel[1:split, ]
+
+# Create test
+test <- shuffled_uspanel[(split+1):nrow(shuffled_uspanel), ]
+
+```
+
+According to the basics of machine learning, I only use the train dataset to calibrate my model, and then use the test dataset to do predictions and check how well the model predicted cases in the test dataset.
+
+Then, I re-rerun the model with ONLY the train dataset:
+
+```{r}
+model2 <- glm(F1stockywin ~ epspw, data= train, family="binomial",na.action=na.omit)
+summary(model2)
+
+```
+
+Now I use this model and do predictions of the probability that the stock beats the market, but in the test dataset:
+
+```{r}
+test$F1predprob = predict(model2,newdata=test, type="response")
+
+```
+
+I see the predicted probabilities for the first cases:
+
+```{r}
+head(test,10)
+```
+
+I can also visualize a histogram to see the range of predicted probabilities:
+
+```{r}
+hist(test$F1predprob)
+```
+
+I now create a column to predict a 1 (the stock beat the market) or 0 according to the predicted probabilities:
+
+```{r}
+test$F1stockwinpred = ifelse(test$F1predprob>0.5,1,0)
+
+```
+
+Now I have a column for the actual binary variable (whether the stock beat the maret), and also a predicted binary variable using the model and the test dataset.
+
+I can now create a Confusion Matrix.
+
+I need to convert the binary variables to a factor-type variables:
+
+```{r}
+library(caret)
+
+test$F1stockywin1 = factor(test$F1stockywin,levels=c("1","0"))
+test$F1stockwinpred1 = factor(test$F1stockwinpred,levels=c("1","0"))
+# When using factor function, the first value of levels must be the POSITIVE value; in this case, =1
+
+# Create confusion matrix
+CM1<- confusionMatrix(test$F1stockwinpred1,test$F1stockywin1, positive='1')
+CM1
+
+
+
+```
+
+**INTERPRETATION**
+
+The diagonal of the confusion matrix has the cases that my model CORRECTLY PREDICTED whether the stock beat or did not beat the market.
+
+Then, looking at the matrix, we see the following:
+
+-   The sum of the FIRST COLUMN= `r CM1$table[1,1]+CM1$table[2,1]`, which is the \# of CASES when the stock actually BEAT the market
+-   The sum of the SECOND COLUMN= `r CM1$table[1,2]+CM1$table[2,2]`, will be the \# of CASES when the stock actually DID NOT BEAT the market
+-   Out of the `r CM1$table[1,1]+CM1$table[2,1]` cases when the stocks ACTUALLY BEAT THE MARKET, the model CORRECTLY PREDICTED `r CM1$table[1,1]` cases, which are the TRUE POSITIVES cases. The rate of TRUE POSITIVES with respect to ALL POSITIVES is called **Sensitivity**, which is `r CM1$byClass[1]`.
+-   Out of the `r CM1$table[1,2]+CM1$table[2,2]` cases when the stock DID NOT BEAT THE MARKET, the model CORRECTLY PREDICTED `r CM1$table[2,2]` cases. This \# is called: TRUE NEGATIVES. The rate (or %) of TRUE NEGATIVES with respect to ALL NEGATIVES is called **Specificity**, which is `r CM1$byClass[2]`.
+-   Out of the `r CM1$table[1,1]+CM1$table[2,1]` cases that the stocks ACTUALLY BEAT THE MARKET, the model WRONGLY PREDICTED `r CM1$table[2,1]` cases. This \# is called: FALSE POSITIVES.
+-   Out of the `r CM1$table[1,2]+CM1$table[2,2]` cases when the stock DID NOT BEAT THE MARKET, the model WRONGLY PREDICTED `r CM1$table[1,2]` cases. This \# is called: FALSE NEGATIVES.
+
+Remember that the Sensitivity and the Specificity rates are:
+
+$$
+SensitivityRate = \frac{TRUEPOSITIVE}{(TRUEPOSITIVE+FALSEPOSITIVE)}
+$$
+
+$$
+SpecificityRate = \frac{TRUENEGATIVE}{(TRUENEGATIVE+FALSENEGATIVE)}
+$$
+
+If Sensitivity is greater than Specificity this means that the model is better to predict POSITIVE CASES (when a stock actually beats the market) than NEGATIVE CASES (when a stock does not beat the market)
+
+The POSITIVE PREDICTED RATIO is:
+
+$$
+PosPredValueRate = \frac{TRUEPOSITIVE}{(TRUEPOSITIVE+FALSENEGATIVE)}
+$$
+
+The NEGATIVE PREDICTED RATIO is:
+
+$$
+NegPredValueRate = \frac{TRUENEGATIVE}{(TRUENEGATIVE+FALSEPOSITIVE)}
+$$
+
+We can do a ROC (Receiver Operator Characteristic) Plot. You first have to install the pROC package.
+
+```{r}
+library(pROC)
+
+roc1<- roc(response=test$F1stockwin, predictor=test$F1predprob,plot=T,col="blue", levels=c("0","1"))
+
+```
+
+I can plot the ROC using the information of roc1 object and the plot function:
+
+```{r}
+plot(1-roc1$specificities, roc1$sensitivities, col="red", pch=16,
+     xlab="False Positive", 
+     ylab="Sensitivity")
+
+```
+
+Note that the X Axis of this plot is from 0 to 1, and in the previous plot is from 1 to 0.
+
+The area under the curve of the ROC (AUC) is:
+
+```{r}
+roc1$auc
+```
+
+As long as the area is greater than 0.5 this means that the model is better than a naive or a totally random model.
+
+We can also plot a curve that shows the probability thresholds used and the corresponding False Positive rate.
+
+```{r}
+library(ggplot2)
+# I create a data frame with 3 columns: 1) the threshold probabilities, 2) Sensitivities, and 
+#   3) Specificities
+thresholdvector <- cbind(roc1$thresholds,roc1$sensitivities,roc1$specificities)
+thresholdvector <- as.data.frame(thresholdvector)
+names(thresholdvector)<-c("threshold","sensitivities","specificities")
+
+# The roc function does not calculate the positive-predicted ratio nor the negative-predicted
+#  ratio.To calculate these ratios, I need the # of tp, tn, fp and fn
+
+
+# I add columns for #true positive cases (tp), #tn, #fp, and #fn:
+thresholdvector$tp = thresholdvector$sensitivities*length(roc1$cases)
+thresholdvector$tn = thresholdvector$specificities*length(roc1$controls)
+thresholdvector$fp =length(roc1$cases) - thresholdvector$tp
+thresholdvector$fn = length(roc1$controls) - thresholdvector$tn
+# Check that the length(roc1$cases) is the total of cases when the event actually happened
+
+
+# I create the positive-prediction ratio and the negative-prediction ratio:
+thresholdvector$pospredratio = thresholdvector$tp / (thresholdvector$tp+thresholdvector$fn)
+thresholdvector$negpredratio = thresholdvector$tn / (thresholdvector$tn+thresholdvector$fp)
+
+# I create the accuracy ratio, which is the % of true positive and true negative with respect to ALL 
+thresholdvector$accuracy = (thresholdvector$tp + thresholdvector$tn) / ( length(roc1$cases) + length(roc1$controls)) 
+
+
+# I plot the 4 ratios against the threshold probability to visualize which might be the
+#   best threshold probability:
+
+ggplot(thresholdvector,aes(x=threshold)) + 
+  geom_line(aes(y=accuracy,color="Accuracy ratio"))  + 
+  geom_line(aes(y=specificities,color="Specificity ratio")) + 
+  geom_line(aes(y=sensitivities,color="Sensitivity ratio")) + 
+  geom_line(aes(y=pospredratio,color="True-Positive Predicted ratio")) +
+  geom_line(aes(y=negpredratio,color="True-Negative Predicted ratio"))  
+
+```
+
+It seems that an optimal threshold should be between 0.45 and 0.55. We can identify the threshold that maximizes the accuracy ratio using deployer:
+
+```{r}
+thresholdsorted <- thresholdvector %>% 
+    select(threshold,accuracy,sensitivities,specificities) %>%
+    arrange(desc(accuracy)) %>%
+    head(5)
+thresholdsorted
+
+
+```
+
+We can see that the threshold that get the highest accuracy is `r thresholdsorted$threshold[1]` . This is very close to the original threshold.
+
+For the cases where the optimal threshold is significantly different than 0.5, it is recommended to re-calculate the predicted binary variable (F1stockwinpred) with this optimal threshold. For example, we can re-calculate the predicted binary variable with this threshold as follows:
+
+```{r}
+test$F1stockwinpred_new = ifelse(test$F1predprob>0.4990156,1,0)
+table(test$F1stockwinpred_new)
+
+
+```
+
+We can compare this table with the first binary predicted variable:
+
+```{r}
+table(test$F1stockwinpred)
+
+```
+
+With the new threshold there are more '1's predicted (more POSITIVE predicted cases)

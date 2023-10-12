@@ -1,0 +1,719 @@
+---
+title: "Workshop 1, Algorithms and data analysis"
+author: "Alberto Dorantes, Ph.D."
+date: "Sep 19, 2023"
+
+abstract: "This is an INDIVIDUAL workshop. In this workshop we learn about data management for financial datasets: data collection, data cleaning, return calculation, data structures, and data merging. In addition, we start playing with a big panel-dataset of historical financial statement variables for many firms."
+
+output:
+  html_document: 
+    number_sections: yes
+    toc: yes
+    toc_float: true
+    theme: united
+    highlight: zenburn
+  pdf_document: default
+
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      warning=FALSE, message=FALSE)
+```
+
+
+# General directions for this Workshop
+
+You will work in RStudio. It is strongly recommended to have the latest version of R and RStudio. Once you are in RStudio, do the following.
+
+Create an R Notebook document (File -> New File -> R Notebook), where you have to write whatever is asked in this workshop. More specifically, you have to: 
+
+- Replicate all the R Code along with its output.
+
+- You have to do whatever is asked in the workshop. It can be: a) Responses to specific **questions** and/or do an exercise/challenge. 
+
+Any **QUESTION** or any **INTERPRETATION** you need to do will be written in **CAPITAL LETTERS**. For ANY QUESTION or INTERPRETATION, you have to RESPOND IN CAPITAL LETTERS right after the question.
+
+- It is STRONGLY RECOMMENDED that you write your OWN NOTES as if this were your personal notebook. Your own workshop/notebook will be very helpful for your further study. 
+
+You have to keep saving your .Rmd file, and ONLY SUBMIT the .html version of your .Rmd file. Pay attention in class to know how to generate an html file from your .Rmd.  
+
+# Set up the name of your R Notebook for this workshop
+
+Setup title and name of your Workshop
+
+Once you have created a new R Notebook, you will see a sample R Notebook document. You must DELETE all the lines of this sample document except the first lines related to title and output. As title, write the workshop # and course, and add a new line with your name. You have to end up with something like:
+
+- - -
+
+title: "Workshop 1, Algorithms and Data Analysis"
+
+author: YourName
+
+output: html_notebook
+
+- - -
+
+Now you are ready to continue writing your first R Notebook. 
+
+You can start writing your own notes/explanations we cover in this workshop. When you need to write lines of **R Code**, you need to click **Insert** at the top of the RStudio Window and select R. Immediately a **chunk of R code** will be set up to start writing your R code. You can execute this piece of code by clicking in the play button (green triangle).  
+
+Note that you can open and edit several R Notebooks, which will appear as tabs at the top of the window. You can visualize the output (results) of your code in the console, located at the bottom of the window. Also, the created variables are listed in the environment, located in the top-right pane. The bottom-right pane shows the files, plots, installed packages, help, and viewer tabs.
+
+Save your R Notebook file as W1-YourName.Rmd. Go to the File menu and select Save As. 
+
+To generate the .html file, you have **knit** your R Notebook. Pay attention how to do this in class. 
+
+
+# Data management for time-series financial variables
+
+## Data collection
+
+We start by downloading online real stock prices from Yahoo Finance. 
+
+We start clearing our R environment:
+
+```{r}
+rm(list=ls())
+# To avoid scientific notation for numbers: 
+options(scipen=999)
+```
+
+### The quantmod package
+
+The quantmod package is designed to help financial traders in developing econometric-based trading models.
+
+It has several functions for financial data collection, data management and data visualization.
+
+This package contains the getSymbols() function, which creates an xts (extensible time series) object in the environment with the downloaded data from the Internet. 
+
+If you  have not install this package in R, go to the **Package** tab in the bottom-right section of RStudio, select **Install** and then type quantmod, and the button **Install**. 
+
+Once you install a package, this package will be in your computer forever. You might re-install a package in case there is a new version of the package.
+
+
+### Load the quantmod package
+
+Now, you have installed a package and it is not necessary to install it again in further occasions. It will stay in your computer. However, next time you want to use it, you have to load it using the library() function
+
+```{r}
+library(quantmod)
+```
+
+### Downloading real financial prices
+
+The getSymbols() function enables its user to download online and up-to-date financial data, such as stock prices, ETF prices, interest rates, exchange rates, etc. getSymbols() allows to download this data from multiple sources: Yahoo Finance, Google Finance, FRED and Oanda. These sources have thousands of finance and economic data series from many market exchanges and other macroeconomic variables around the world.
+
+
+Now, we will work with historical data of the Bitcoin cryptocurrency and the TESLA stock. We download daily quotations of these instruments  from January 1, 2017 to Aug 31, 2021 from Yahoo Finance:
+
+```{r}
+getSymbols(c("BTC-USD","TSLA"), from="2018-01-01", 
+           to="2023-09-18", src="yahoo", periodicity="daily")
+```
+
+This function will create an xts-zoo R object for each ticker. Each object has the corresponding historical daily prices. xts stands for *extensible time-series*. An xts-zoo object is designed to easily manipulate time series data. 
+
+BTC-USD and TSLA are the ticker names in Yahoo Finance. The *from* argument is used to indicate the initial date from which you want to bring data. The *to* argument is the end date of the series you want to download. In this case we omit the *to* argument in order to download the most recent data. The *src* argument indicates the source of the data, in this case it is Yahoo Finance. Finally, the *periodicity* argument specifies the granularity of the data (daily, weekly, monthly, quarterly).
+
+### Show the content of datasets 
+
+We can view the content of an R object just by typing the name of the object in the R code. If the dataset is long we can view the first rows or the last rows of the dataset by using the following functions: 
+```{r}
+head(`BTC-USD`,n=5)
+```
+
+When tickers have special characters, we have to make reference to the object with simple quotes (``).
+
+Also, you can list the LAST 5 rows of the dataset. Note that you can change number of rows you want to display.
+
+```{r}
+tail(`BTC-USD`, n=10)
+```
+
+The xts datasets created with the getSymbols function have different columns for open, low, high, close, adjusted and volume data. These datasets are also called OHLC datasets. 
+
+The adjusted prices are used for stocks, not for currencies. Adjusted prices is an adjustment of the closing prices after considering dividend payments and stock splits. Then, for the Bitcoin series we can use close or adjusted price to calculate returns.
+
+## Data selection 
+
+### Column selection
+
+We can easily select either columns or rows of a dataset. For example, if we want to select the adjusted price column of the TSLA xts dataset, we use the $ and the name of the column, and then assign it to any new name:
+
+```{r}
+adjTSLA = TSLA$TSLA.Adjusted
+head(adjTSLA)
+```
+
+Another way to select a column is by the # of the column(s):
+
+```{r}
+#Selecting the adjusted price, which is the column #6: 
+adjTSLA = TSLA[, 6]
+```
+
+Note that the notation to make reference to column 6 and ALL rows of TSLA is: 
+
+TSLA[ , 6]
+
+In this case, I want to keep ALL rows, so we leave empty the # of rows, and indicate that we want only column # 6. 
+
+R datasets have 2 dimensions: [#rows, #columns]. We can show the dimensions of any R dataset:
+
+```{r}
+dim(TSLA)
+```
+We see that the # of rows of TSLA dataset is `r dim(TSLA)[1]`, and the # of columns is `r dim(TSLA)[2]`. 
+
+We can make reference to any subset of the dataset using this notation of [#rows, #columns]
+
+### Row selection
+
+We can also select specific rows of a dataset following the same notation of [#rows, #columns]. If I want to select only the first rows of TSLA dataset, I can do the following:
+
+```{r}
+TSLAfirstdays = TSLA[1:10,]
+TSLAfirstdays
+```
+
+We used the notation 1:10 in the row specification, indicating that we want the sequence from 1 to 10. 
+
+We can also select specific rows and columns. For example, if I only want to select the first 10 days of the adjusted prices of TESLA:
+
+```{r}
+TSLA_adjusted_first_prices = TSLA[1:10,6]
+head(TSLA_adjusted_first_prices)
+```
+
+If we want to select specific columns, we can use the container c() vector to indicate which column # we want to select. For example, if for some reason we want to select the Open and Close columns (columns #1 and #4), and select the first 10 days of TESLA prices:
+
+```{r}
+TSLA_Open_Close = TSLA[1:10,c(1,4)]
+head(TSLA_Open_Close)
+```
+
+For xts datasets, we can also select rows using the date index. Each xts dataset has a time index that we can use. For example, if we want to select all TESLA prices of only year 2021 we can do the following:
+
+```{r}
+TESLA_2021 = TSLA["2021-01-01/2021-12-31", ]
+head(TESLA_2021)
+```
+
+We can also combine column selection with row selection. If we want the same date selection, but only adjusted prices:
+
+```{r}
+TESLA_2021_adjusted = TSLA["2021-01-01/2021-12-31", "TSLA.Adjusted"]
+```
+
+In this case, to select the column I used the column name instead of the # of the column. 
+
+
+## Data Merging:
+
+We can use the `merge()` function to join two or more xts time-series datasets  into an integrated dataset:
+
+```{r}
+adjprices <- merge(`BTC-USD`$`BTC-USD.Adjusted`, TSLA$TSLA.Adjusted)
+# I can select only the adjusted prices in order to calculate returns:
+
+```
+
+The quantmod has the Ad function to get Adjusted prices. We can do the same we did above using this function:
+
+```{r}
+adjprices <- merge(Ad(`BTC-USD`), Ad(TSLA$TSLA.Adjusted))
+
+```
+
+Now we have an xts-zoo objects with the 2 adjusted prices. We can change the names of the columns:
+
+```{r}
+names(adjprices)<-c("bitcoin","tesla")
+```
+
+Now we can make reference to the adjusted prices using these names.
+
+## Data cleaning
+
+In Finance, when managing daily data it is very common to have gaps in the series. What does this mean? It means that the contains some null values for some days. For example, for stock series there is no data for weekends or holidays:
+
+```{r}
+head(adjprices,n=10)
+```
+
+In this case, Bitcoin has price data for any day including weekends and holidays. When we did the merge, the TESLA column will have NA values for these days. If we keep this dataset as it is, when calculating daily returns for TESLA, it will not be possible to calculate returns for Modays since there is no price value for Sunday. An easy way to deal with NA values is to delete the rows that have any NA value in any column. We can do this with the na.omit function:
+
+However, R deals with gaps because it recognizes that we are working with a time series object. It is a good idea to have a data set free of NA's. So, I can use the function na.omit:
+
+```{r}
+adjprices <- na.omit(adjprices)
+```
+
+Now the holidays and weekends were deleted:
+
+```{r}
+head(adjprices,n=6)
+```
+
+## Visualization of prices 
+
+Visualize how Bitcoin has been valued over time:
+
+```{r}
+plot(`BTC-USD`)
+```
+
+We can do a better visualization if we use the chartSeries function from the quantmod package: 
+
+```{r}
+chartSeries(`BTC-USD`, theme=("white"))
+```
+
+We can also do a plot of specific periods. For example, we can see how Bitcoin price behaved only in 2021:
+
+```{r}
+chartSeries(`BTC-USD`, subset = '2021-01-01/2021-12-31')
+```
+
+
+## Financial returns
+
+A financial simple return for a stock ($R_{t}$) is calculated as a percentage change of price from the previous period (t-1) to the present period (t): 
+
+$$
+R_{t}=\frac{\left(Adjprice_{t}-Adjprice_{t-1}\right)}{Adjprice_{t-1}}=\frac{Adjprice_{t}}{Adjprice_{t-1}}-1
+$$
+For example, if the adjusted price of a stock at the end of January 2022 was $100.00, and its previous (December 2021) adjusted price was $80.00, then the monthly simple return of the stock in January 2022 will be:
+
+$$
+R_{Jan2022}=\frac{Adprice_{Jan2022}}{Adprice_{Dec2021}}-1=\frac{100}{80}-1=0.25
+$$
+
+We can use returns in decimal or in percentage (multiplying by 100). We will keep using decimals.
+
+In Finance it is very recommended to calculate continuously compounded returns (cc returns) and using cc returns instead of simple returns for data analysis, statistics and econometric models. cc returns are also called log returns. 
+
+One way to calculate cc returns is by subtracting the log of the current adjusted price (at t) minus the log of the previous adjusted price (at t-1):
+
+$$
+r_{t}=log(Adjprice_{t})-log(Adjprice_{t-1})
+$$
+This is also called as the difference of the log of the price. 
+
+We can also calculate cc returns as the log of the current adjusted price (at t) divided by the previous adjusted price (at t-1):
+
+$$
+r_{t}=log\left(\frac{Adjprice_{t}}{Adjprice_{t-1}}\right)
+$$
+
+cc returns are usually represented by small r, while simple returns are represented by capital R.
+
+## Financial return calculation for time-series 
+
+### Simple returns
+
+We must use adjusted stock prices to calculate financial returns. To calculate a lagged (past) value of price of a time-series variable we can use the function **lag** from the stats package. 
+
+
+```{r}
+R = adjprices / stats::lag(adjprices,n=1) - 1 
+head(R)
+```
+
+Since adjprices has 2 columns, then R calculates the daily simple returns for all columns of the dataset. 
+
+Note that we use the name stats:: before the lag function. We did this since there are other R packages that have a function called lag, so R can be confused if we do not specify which package we are using for the lag function. 
+
+### Continuously compounded returns
+
+Now we calculate the daily continuously compounded returns using adjusted prices. We use the diff and log functions. The diff function calculates the difference between the value of a time-series variable and its past value:
+
+```{r}
+r = diff(log(adjprices))
+head(r)
+```
+
+Remember that the first difference of log prices is actually the continuously compounded returns of the period. 
+
+We can visualize both daily returns over time for Tesla:
+
+```{r}
+plot(R$tesla)
+```
+
+We can observe increasing volatility in 2018 and strong volatility in the pandemic months. Volatility can be calculated as the standard deviation of returns. 
+
+## Descriptive statistics with time-series
+
+We will use the table.Stats from the PerformanceAnalytics package. You have to install this package by clicking the **Packages** tab in the right-bottom windows of RStudio, then click **Install** and type PerformanceAnalytics.
+
+We load the package and get the main descriptive statistics of both, Tesla and Bitcoin daily returns:
+
+```{r}
+library(PerformanceAnalytics)
+table1 <- table.Stats(R)
+table1
+
+```
+We can also get specific descriptive statistics using specific functions such as mean and sd:
+
+```{r}
+mean_tesla_R = mean(R$tesla, na.rm=TRUE)
+median_tesla_R = median(R$tesla, na.rm=TRUE)
+sd_tesla_R = sd(R$tesla, na.rm=TRUE)
+
+cat("Tesla daily mean return is ",mean_tesla_R, "\n")
+cat("Tesla daily median return is ",median_tesla_R, "\n")
+cat("Tesla daily volatility is ", sd_tesla_R)
+
+```
+When columns have NA values, some descriptive statistics functions cannot be calculated, unless we use the option na.rm=TRUE (means remove the NA values before calculation)
+
+When median and mean are very different, this is a sign of a non-normality in the distribution of the variable. Here we see that Tesla median return is much less than its mean (0.14% vs 0.31%). The median is a much better measure of central tendency in Financial returns.
+
+If Kurtosis of the variable is greater than 3, then the variable has more extreme values than a normal distributed variable. In this case, we see that both returns have Kurtosis much greater than 3.
+
+Financial returns usually have more extreme values than normal distributed variables, so traditional standard deviation might not provide a complete view of the dispersion of returns. The quartiles provide us a better perception about the volatility of financial returns. The box-plot gives us a good perception of volatility, mean, median (Q2), quartile 1 (Q1) and quartile 3 (Q3) of returns:  
+
+```{r}
+chart.Boxplot(R)
+
+```
+
+It is easy to see that Bitcoin is riskier than Tesla since we have a wider range of returns in both, negative and positive returns. The red circles show the mean, the mid line is the median (50 percentile), the boxes include the 50% of the data from the Quartile 1 or Q1 (25 percentile) to the Q3 (75 percentile). The vertical lines limit non-extreme values. The dots are considered extreme values in the context of its own distribution. 
+
+## Visualizing holing return over time
+
+We can use the charts.PerformanceSummary of returns to visualize how much we would made over time if we had invested $1.00 and hold it in the whole period of the data:
+
+```{r}
+charts.PerformanceSummary(R$tesla, 
+                          main = "Performance of $1.00 Tesla",
+                          wealth.index = TRUE)
+
+```
+
+We see that if we had invested in Tesla $1.00 in Jan 1, 2017, today we would have more than 15 times my money at the end of the period!
+
+We can calculate the exact holding period return by getting the percentage growth of the series from the first adjusted price up to the last adjusted price:
+
+```{r}
+hpr_tesla = as.numeric(adjprices$tesla[nrow(adjprices)]) / as.numeric(adjprices$tesla[1]) - 1
+hpr_tesla
+```
+
+We can do the same for Bitcoin:
+
+```{r}
+charts.PerformanceSummary(R$bitcoin, 
+                          main = "Performance of $1.00 in Bitcoin",
+                          wealth.index = TRUE)
+
+```
+
+
+# Data structures
+
+In Finance there are basically the following dataset structures
+or data types:
+
+1. Time-series: in this structure you can have many periods, and information for one "subject" (subject can be company, index, industry, etc). Also, you can have more than one subject, but the information is placed as new column for each subject. For example: the dataset created after running getsymbols:
+
+```{r echo=FALSE}
+ex1 <- matrix(data = c(10, 11, 0.02, 0.10, 20, 21, 0.01, 0.05), nrow = 2, ncol=4)
+colnames(ex1) <- c( "p_stock1", "r_stock1", "p_stock2", "r_stock2")
+rownames(ex1) <- c("2014m1", "2014m2")
+ex1 <- as.data.frame(ex1)
+ex1
+```
+
+2. Cross-sectional structure: in this structure, you usually have many "subjects", for ONLY ONE period For example, key performance indicators of Mexican companies for the last quarter of 2016:
+
+```{r echo=FALSE}
+ex2 <- data.frame(Ticker = c("ALFAA.MX", "AMXL.MX"), ROA = c(0.023,0.015), ATO = c(0.90,1.1), ProfitMargin = c(0.15,0.10))
+ex2
+```
+
+3. Panel-data structure: it is combination of time-series and cross-sectional. In this structure, we have more than one subject, and for each subject we can have more than one period. Example:
+```{r echo=FALSE}
+ex3 <- data.frame(Ticker=c("ALFAA.MX","ALFAA.MX", "...","BIMBOA.MX","BIMBOA.MX", "...","BIMBOA.MX"), quarter=c("2014q1","2014q2","...","2014q1","2014q2", "...","2017q1"), ROA=c("0.2","0.21","...","0.15","0.20", "...","0.15"), ATO=c("1.1","1.2","...","0.8","0.9","...","1.1"), ProfitMargin=c("0.17","0.16","...","0.10","0.05","...","0.09"))
+ex3
+```
+
+# Data management for panel-data
+
+For financial analysis, data management is a very important process. Most of the time, before designing and running a financial / econometric model, it is needed to do simple and sophisticated data management. 
+
+In this example we will learn how to collapse a dataset and merge one dataset with another considering the data structures we learned in the previous section.
+
+We will merge 2 dataset: a time-series dataset with monthly historical data for the Mexican IPyC Market index, and a panel dataset with quarterly financial information for many Mexican public firms (A public firm is a company that issue shares in the market). 
+
+We can only merge datasets with the same *granularity*. In other words, we cannot merge a monthly with a quarterly dataset. In this case, the market monthly dataset must be aggregated to quarters, and then we can merge the resulting dataset with the other quarterly dataset.  
+
+We will work with an online panel data of Mexican firms. Download the dataset: http://www.apradie.com/datos/datamx2020q4.xlsx using the readxl package (you have to install this package). This dataset has real quarterly financial data of Mexican rms (from the BMV) for many years. This information comes from Economatica, a leading software and database economic and financial information. This dataset is a panel dataset, which is a combination of cross sectional and time-series dataset. Navigate through the data (using View() function) to learn more about this dataset. 
+
+```{r}
+# Load the package
+library(readxl)
+# Download the excel file from a web site:
+download.file("http://www.apradie.com/datos/datamx2020q4.xlsx",
+              "firmspaneldata.xlsx", mode="wb")
+# The first parameter is the link and the second is a name for the
+#  local file
+
+# Use the function read_excel()
+paneldataset <- read_excel("firmspaneldata.xlsx")
+
+```
+
+We need to merge the market monthly return to this panel dataset.
+
+Then, we need to:
+
+1. Download the monthly market index from Yahoo Finance (getsymbols)
+
+2. Transform (Collapse) the dataset from monthly to quarterly
+
+3. Merge the resulting quarterly market data with the panel data of public firms.
+
+We download the ipyc data for the same perids as the firmpaneldata:
+```{r }
+library(quantmod)
+getSymbols("^MXX", from="2000-01-01", to= "2019-12-31",
+            periodicity="monthly", src="yahoo")
+
+```
+
+We need to aggregate (collapse) the dataset from monthly to quarterly, keeping the LAST market index per quarter. We can use the to.quarterly function from quantmod:
+
+```{r }
+QMXX <- to.quarterly(MXX,indexAt='startof')
+
+```
+
+This function creates an OHLC xts dataset for each quarter. We can have a look of the content:
+
+```{r}
+head(QMXX)
+```
+
+We see that the Open, High, Low, Close and Adjusted prices for each quarter were calculated. We only need the Adjusted price to calculate the market returns, so we select only the Close column:
+
+```{r}
+QMXX = QMXX$MXX.Adjusted
+# Change the name of the column:
+colnames(QMXX) <- "MXXindex"
+```
+
+Now we can calculate cc return of the market
+```{r }
+
+QMXX$MXXreturns <- diff(log(QMXX)) 
+```
+
+Now we are almost ready to merge this quarterly data to the panel dataset using merge. 
+
+We need to have both datasets with a common column. In this case, the common column is quarter. Both datasets must be of the same *class*, in this case, data frame class.
+
+The QMXX has the quarter as index, but not as part of a column. We create a data frame with the quarter column equal to its index:
+
+```{r}
+# Create a dataframe with a quarter column for the QMXX
+QMXX.df<-data.frame(quarter=index(QMXX),coredata(QMXX))
+# I extracted the quarter from the index
+# coredata is a function that extract the data of an object
+#   without extracting formatting
+```
+
+The common column must be of the same type, so we make sure that the column quarter of dataset is a Date type: 
+
+```{r}
+paneldataset$quarter<-as.Date(paneldataset$quarter)
+```
+
+Now we can do a *MANY-TO-ONE* merge of both datasets:
+```{r}
+paneldataset<-merge(paneldataset,QMXX.df,by="quarter")
+
+# Now I have a dataset for all firms-quarters, and the
+# MXX index and MXX return is merged for each firm
+
+```
+
+## Setting a panel data structure
+
+We need to tell R that the dataset is panel data with the structure firm-quarter. 
+
+We define the dataset as a panel data using the pdata.frame function. You need to install the package "plm".
+
+We indicate the index of the panel data as follows: firmcode will be the column for the *subjects* and quarter column for the *time*:
+
+```{r}
+library(plm)
+paneldataset <- pdata.frame(paneldataset, index= c("firmcode","quarter"))
+```
+
+
+## Data calculations with panel data
+
+We will use the dplyr package to easily do data selection and calculations for panel datasets.
+
+You have to install this package by clicking the **Packages** tab in the right-bottom windows of RStudio, then click **Install** and type dplyr. 
+
+Now we load the dplyr package:
+
+```{r}
+library(dplyr)
+```
+
+This dataset has historical quarterly financial data of active and not active firms in the Bolsa Mexicana de Valores. We will keep ONLY active firms in the dataset from 2010. You can do this by typing:
+
+```{r}
+activedata<-paneldataset[paneldataset$status=="active",]
+activedata<-activedata[activedata$year>=2010,]
+
+```
+
+As you see, we start with the paneldataset, and then we do a sub-setting or selection of rows indicating specific conditions. 
+
+Let's select a few important columns from this dataset to perform some basic financial ratio calculations.
+
+We will use the dplyr package. This package is designed for data management of data frames and panel data. We link data management processes by the operand %>%. 
+
+```{r}
+
+activedata<-activedata %>%
+    select(firm,quarter,year,revenue,cogs,ebit,totalassets,
+           adjustedstockprice, naics1)
+```
+
+Here we start with the activedata dataset, and then select a few columns.
+
+The dplyr package is very powerful for data management. **Click HERE** (https://datacarpentry.org/R-genomics/04-dplyr.html) a good summary of the main functionality of this package. 
+
+### Calculating financial returns and ratios with panel data
+
+
+As we did for time-series data, we can calculate returns with a panel dataset. We follow the same formula mentioned above, but now we use the panel dataset:
+
+
+```{r}
+activedata$r = diff(log(activedata$adjustedstockprice))
+```
+
+We added the column r to the panel data. Since R knows that we have a panel data structure, it calculates returns correctly for each firm-quarter. When we have a change in firm, then returns do not have to be calculated. You can have a look to the data and check whether the first quarters for each firms have NA values. 
+
+Let's calculate Return on Assets using EBIT (Earnings before interest and taxes) instead of Net income:
+
+```{r}
+activedata$ROA = activedata$ebit / activedata$totalassets
+```
+
+Now we calculate Profit Margin (PM) and Asset Turn Over (ATO). We will use EBIT instead of Net Income to calculate PM:
+
+```{r}
+activedata$PM = activedata$ebit / activedata$revenue
+activedata$ATO = activedata$revenue / activedata$totalassets
+
+```
+
+### Using conditionals to create columns
+
+Let's create a binary variable as a signal of positive ROA in a quarter compared with its ROA of one year ago (4 quarters ago). In other words, if the firm had a ROA in a specific quarter that is greater than its ROA 4 quarters ago, we will assign 1; 0 otherwise:
+
+```{r}
+activedata$ROAsignal = ifelse(activedata$ROA>
+                    plm::lag(activedata$ROA, 4),1,0)
+
+```
+
+Here se use a conditional with the function ifelse. The first parameter of ifelse is a logical condition that can be true or false. If the condition is true, then the value assigned will be the second parameter; if it is false, the value assigned will be the third parameter. 
+
+The ifelse function is very useful when creating financial signals that compare financial values. Here is the general description of the ifelse function:
+
+ifelse(data_condition, value_if_TRUE, value_if_FALSE)
+
+For example:
+
+```{r}
+a=5
+b=10
+ifelse(a>b,1,0)
+
+```
+Since a is NOT greater than b, then the value that was returned was zero. 
+
+We can use this function to create financial signals as new columns in a panel dataset or time-series dataset. 
+
+**OPTIONAL CHALLENGE:**
+
+(This is quite challenging!)
+
+**CREATE A COLUMN IN THE PANEL DATASET CALLED ROA_ABOVE THAT WILL BE ONE (=1) IF THE FIRM-QUARTER HAD A ROA GREATER THAN THE AVERAGE ROA OF ITS INDUSTRY IN THE CORRESPONDING QUARTER; AND ASSIGN A ZERO (=0) OTHERWISE.** 
+
+*HINT: Using dplyr is easier. You can "google" it with statements such as "R dplyr create columns equal mean of a group"*
+
+
+## Descriptive statistics with panel data
+
+Doing descriptive statistics with panel data is not quite equal as in the case of time-series structure. It is a good idea to do descriptive statistics by period of the panel data to avoid getting wrong summaries. 
+
+We can start by doing a descriptive statistics selecting only the last quarter of the data:
+
+```{r}
+data2019q4 = activedata[activedata$quarter=='2019-10-01',]
+summary(data2019q4[,c(4:7,10)])
+
+
+```
+
+
+Here we will use the dplyr package to select, group and get descriptive statistics by groups. 
+
+In this case, we will select the last quarter of the dataset, group  the firms by industry, and for each industry we get the median of the main variables:
+
+```{r}
+industries<-unique(activedata$naics1)
+activedata %>% 
+   filter(quarter=='2019-10-01') %>%
+  group_by(naics1) %>% 
+  summarize(firms = n(),
+            median_total_assets = median(totalassets, na.rm = TRUE),
+            median_revenue = median(revenue, na.rm = TRUE),
+            median_ebit = median(ebit, na.rm = TRUE))
+```
+Here we can see a good picture of the whole Mexican Financial Market. It is important to note that the best central tendency measure for any financial statement variable such as revenue, total assets is the median since the distribution of these variables is always skewed to the right with very few big, big firms. The arithmetic mean of financial variables do not provide a good representation of the typical company in a market.  
+
+**LOOKING AT THE 2 TABLES ABOVE, PROVIDE A GOOD DESCRIPTION OF A TYPICAL (AVERAGE) FIRM IN MEXICO, AND A DESCRIPTION OF THE MEXICAN MARKET IN TERMS OF FIRMS BY INDUSTRY AND FIRM SIZE FOR EACH INDUSTRY.**
+
+# Datacamp online courses
+
+You will receive an email invitation to register in datacamp.com. Datacamp is one of the best online learning sites for Data Science applied to Business and Finance. 
+
+You will receive **free access** for the whole semester! Accept the invitation to be registered in datacamp. 
+
+YUO **MUST TAKE** **Chapter 1 : Transforming Data with dplyr** from the course: **Data Manipulation with dplyr**
+
+The following courses/chapters are OPTIONAL (but recommended to do during the first 2-3 weeks of the course):
+
+Chapter 2 (Aggregating data) from the same course: Manipulation with dplyr 
+
+If you want learn more about getting financial data, you can check the course: **Importing and Managing Financial Data in R**
+
+
+# W1 submission
+
+The grade of this Workshop will be the following:
+
+-  Complete (100%): If you submit an ORIGINAL and COMPLETE HTML file with all the activities, with your notes, and with your OWN RESPONSES to questions
+
+-  Incomplete (75%): If you submit an ORIGINAL HTML file with ALL the activities but you did NOT RESPOND to the questions and/or you did not do all activities and respond to some of the questions. 
+
+- Very Incomplete (10%-70%): If you complete from 10% to 75% of the workshop or you completed more but parts of your work is a copy-paste from other workshops. 
+
+- Not submitted (0%) 
+
+Remember that you have to submit your .html file through Canvas BEFORE NEXT CLASS.
+
+

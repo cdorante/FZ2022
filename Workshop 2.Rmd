@@ -1,0 +1,229 @@
+---
+title: "Workshop 2, Algorithms and data analysis"
+author: "Alberto Dorantes, Ph.D."
+date: "Sep 26, 2023"
+
+abstract: "This is an INDIVIDUAL workshop. In this workshop we continue practicing with descriptive statistics, data understanding and financial data calculations. In addition, we introduce what is Machine Learning, and we do a review of regression models and application in Finance. "
+
+output:
+  html_document: 
+    number_sections: yes
+    toc: yes
+    toc_float: true
+    theme: united
+    highlight: zenburn
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# General directions for this Workshop
+
+You will work in RStudio. It is strongly recommended to have the latest version of R and RStudio. Once you are in RStudio, do the following.
+
+Create an R Notebook document (File -\> New File -\> R Notebook), where you have to write whatever is asked in this workshop. More specifically, you have to:
+
+-   Replicate all the R Code along with its output.
+
+-   You have to do whatever is asked in the workshop. It can be: a) Responses to specific **questions** and/or do an exercise/challenge.
+
+Any **QUESTION** or any **INTERPRETATION** you need to do will be written in **CAPITAL LETTERS**. For ANY QUESTION or INTERPRETATION, you have to RESPOND IN CAPITAL LETTERS right after the question.
+
+-   It is STRONGLY RECOMMENDED that you write your OWN NOTES as if this were your personal notebook. Your own workshop/notebook will be very helpful for your further study.
+
+Save your .Rmd as W2-Yourname.Rmd. ONLY SUBMIT the .html version of your .Rmd file.
+
+# Introduction
+
+We will work with a panel data of real US public firms. You have to analyze historical quarterly financial statements of all US public firms listed in the New York Exchange and NASDAQ.
+
+This is the dataset you will use for the **Problem Situation** (Final Project) of this class.
+
+First, we will do descriptive statistics and visualization with the purpose of understanding the US financial market.
+
+You have to work with 2 datasets:
+
+-   firmsus2023.csv: List of all US public firms with general information of each firm
+
+-   dataus2023.csv : Panel data with historical financial quarterly data for all US public firms.
+
+You have to download these 2 files from Canvas/Modules and save in the directory where you have your workshop.
+
+The first dataset (dataus2023q2) contains the historical financial data of the firms, while the second dataset (firmsus2023) is a catalog of all firms along with the corresponding industry type and status (active or cancelled).
+
+The dataus2023q2 dataset has a panel-data (also called long format) structure. Each row has financial information for one US firm and 1 period (a quarter). All \$ amounts are in thousands ('1000s). Here is a data dictionary of the columns:
+
+| Variable           | Description                                                                                                                                                                                    |
+|----------------|--------------------------------------------------------|
+| firm               | Unique code of the company (also called ticker)                                                                                                                                                |
+| q                  | Quarter date                                                                                                                                                                                   |
+| fiscalmonth        | Month of the year when the firm closes a fiscal year                                                                                                                                           |
+| revenue            | Total sales of the firm from the first fiscal quarter to the current quarter                                                                                                                   |
+| cogs               | Cost of good sold - variable costs of the products sold - from the first fiscal quarter to the current quarter                                                                                 |
+| sgae               | Sales and general administrative expenses - from the first fiscal quarter to the current quarter                                                                                               |
+| otherincome        | Other operational income/expenses that are not directly from the core operations of the firm - from the first fiscal quarter to the current quarter                                            |
+| extraordinaryitems | Extra income/expenses not related to regular operations - from the first fiscal quarter to the current quarter                                                                                 |
+| finexp             | Financial expenses - interest expenses paid (generated from loans) - from the first fiscal quarter to the current quarter                                                                      |
+| incometax          | Income tax from the first fiscal quarter to the current quarter                                                                                                                                |
+| totalassets        | Total assets of the firm at the end of the quarter                                                                                                                                             |
+| currentassets      | Current assets of the firm at the end of the quarter                                                                                                                                           |
+| totalliabilities   | Total liabilities of the firm at the end of the quarter                                                                                                                                        |
+| currentliabilities | Current liabilities of the firm at the end of the quarter                                                                                                                                      |
+| longdebt           | Balance of long-term financial debt (loans to pay longer than 1 year)                                                                                                                          |
+| adjprice           | Stock adjusted price at the end of the quarter; adjusted for stock splits and dividend payments; used to calculate stock returns                                                               |
+| originalprice      | Historical stock price (not adjusted); used to calculate historical market value                                                                                                               |
+| sharesoutstanding  | Historical number of shares available in the market                                                                                                                                            |
+| fixedassets        | Fixed assets value at the end of the quarter                                                                                                                                                   |
+| year               | Calendar year                                                                                                                                                                                  |
+| yearf              | Fiscal year - this depends on when the firm ends its fiscal year; if fiscalmonth=12 in the quarter 3, then the fiscal year will start in Q4 of a year and ends in the Q3 of the following year |
+
+: Data dictionary of historical quarterly financial data.
+
+Each row of this dataset has quarterly financial data of one firm in one quarter. All firms have quarters from Q1 2000 to Q2 2023. Not all firms have existed since 2000, so if the first quarters are empty that means that the firm did not exist in the US financial market in those quarters. Then, it is possible to know when each firm went public to issue shares in the financial market: the first quarter with some non-empty data.
+
+Each firm has defined the month of the year used to close a fiscal year. For example, Apple closes the fiscal year at the end of Quarter 3 (end of September) of any year. Then, for Apple, in the Q3 of 2022, there will be a 12 for the fiscalmonth variable. In this case, Apple starts its fiscal year in the Q4 of each year and ends in the Q3 of the following year. Most of the firms (about 80%) close fiscal year in December, so these firms will have a 12 in the Q4 of each year.
+
+The variables related to sales and expenses are cumulative for each fiscal year. For example, Apple sold about \$117 billion in the last calendar quarter (Q4) of 2022, but this is the first fiscal quarter for Apple. For Q1 (calendar) 2023 (which is the 2nd fiscal quarter), Apple has about \$212 billion in the revenue variable, meaning that considering fiscal quarter 1 and 2, Apple has sold \$212 billion. For Q2 2023 Apple has about \$293 billion, meaning that the cumulative revenue of fiscal Q1, Q2 and Q3 is about \$293 billion. Then, if you select rows with fiscalmonth=12, then you will be selecting those quarters with annual financial information for each firm!
+
+Earnings before interest and Taxes (ebit) and Net Income (netincome) must be calculated as: 
+
+ebit = revenue - cogs - sgae
+
+netincome = ebit + otherincome + extraordinaryitems - finexp - incometax
+
+
+The firmsus2023.csv is a catalog of all active and cancelled US firms:
+
+| Variable          | Description                                           |
+|-------------------|-----------------------------------------------------|
+| firm              | Unique code of the company (also called ticker)       |
+| name              | Name of the firm                                      |
+| status            | Status of the firm: active or cancelled               |
+| partind           | Percent participation in the S&P500 market index      |
+| naics1            | North American Industry Classification Code - Level 1 |
+| naics2            | North American Industry Classification Code - Level 2 |
+| SectorEconomatica | Economatica Industry classification                   |
+
+# Challenge 1: Data management algorithms
+
+You have to import the datasets. We will download these datasets from a web site. Here is the code:
+
+Import (into our R environment) the panel quarterly data of all US firms:
+
+```{r, eval=FALSE}
+uspanel <- read.csv("dataus2023.csv")
+
+```
+
+Now we import that list of all public US firms:
+
+```{r, eval=FALSE}
+usfirms <- read.csv("firmsus2023.csv")
+
+```
+
+As a quick check of the imported data, write the code do the following query:
+
+**1. Display the revenue and total assets for Apple for the annual fiscal quarters of 2020, 2021 and 2022. The annual quarters are those with fiscalmonth=12**
+
+Do an online check, find the most recent 10-K report (annual financial statement) of Apple, and compare 2020 anual sales with what you got. You must get the same amount for the anual sales reported at the end of fiscal year (for Apple, the fiscal year is Q3).
+
+**2. Using the panel dataset, write the algorithm to select active firms along with the quarters with annual financial data in 2022**.
+
+Before doing basic descriptive statistics for the US market, you do some data management algorithms.
+
+To do this, you have to select firm-quarters with fiscalmonth=12, year=2022 and only active firms.
+
+**Save the result in a new dataset called panel2022.**
+
+**3. Using the panel2022 dataset do the required algorithm to merge important firm characteristics to this panel dataset. You have to pull the following firm characteristics: Company name, status, and industry (naics1).**
+
+In the panel dataset we do not have general information of each firm such as firm name, industry, status (active or cancelled), etc. So, we start by integrating this information into the panel data:
+
+In this dataset, we have quarterly financial data. For income-statement variables, the information is the cumulative amount from Q1 to the corresponding quarter of the fiscal year. For balance-sheet variables, the information is the value of the variable at the end of the quarter (since the beginning when the firm was created).
+
+The fiscal month variable indicates the following: if fiscalmonth=12, then that means that the corresponding quarter is the end-of-the-fiscal-year quarter.
+
+# Challenge 2: Code for descriptive statistics for 2022
+
+Using the panel2022 dataset, you have to do the following descriptive statistics and respond the following questions.
+
+You have to calculate market capitalization (marketcap) in this dataset. You can calculate a new column as follows:
+
+marketcap = original stock price \* shareoutstanding.
+
+This is the market value of the firm in each quarter. We use the original stock price (before stock splits and dividend adjustments) since the \# of shares outstanding is the historical \# of shares.
+
+**1. Show and interpret the median, 25 and 75 percentile of total assets and market capitalization (market value) of the active US firms in 2022**
+
+**2. By industry show the \# of firms, median, 25 and 75 percentile of total assets and market capitalization (market value) of the active US firms in 2022**
+
+**3. Which are the 10 biggest active firms in terms of total assets according to the end of fiscal year of 2022? Show the name of the firms, the industry and total assets.**
+
+**4. Which are the 10 biggest active firms in terms of market capitalization? Show the name of the firms, the industry and market value as of 2022**
+
+**5. Show and interpret a histogram of the 2022 market capitalization for all ACTIVE firms**
+
+**6. For each industry show and interpret a box plot to better understand the size of active firms in 2022 (use the market capitalization)**
+
+# Challenge 3. Setting the dataset as panel data
+
+**Using the plm package, indicate R that uspanel is a panel data, which has firm column for the subjects and quarter (q) for the time variable. Keep the same name of uspanel.**
+
+You can check how we did this in Workshop 1.
+
+# Challenge 4. Calculating financial variables
+
+You have to write the code to calculate the following financial variables and financial ratios for all firms-quarters of US firms.
+
+**1. Using the original panel dataset (uspanel), create columns for the following variables:**
+
+-   Gross profit (grossprofit) = Revenue - Cost of good Sold (cogs)
+
+-   Earnings before interest and taxes (ebit) = Gross profit - Sales & general administrative expenses (sgae)
+
+-   Net Income (netincome) = ebit + otherincome + extraordinaryitems - financial expenses - incometax
+
+-   Annual market return: use adjusted stock price and remember that you have quarterly data.
+
+-   Market capitalization: (marketcap): original stock price \* shareoutstanding.
+
+This is the market value of the firm in each quarter. We use the original stock price (before stock splits and dividend adjustments) since the \# of shares outstanding is the historical \# of shares.
+
+**2. Using the same panel dataset (uspanel), create columns for the following financial ratios:**
+
+-   Operational Return on Assets (roabit): roabit divided by total assets at the beginning of the period. Total assets of the beginning of the year is actually the total assets of ONE year ago.
+
+$$
+roabit=\frac{ebit_{t}}{totalassets_{t-4}}
+$$ Here you have to use the lag function of the plm package to get value of total assets one year ago, which is 4 quarters ago.
+
+-   Return on Assets (roa):
+
+$$
+roa=\frac{netincome_{t}}{totalassets_{t-4}}
+$$
+
+-   Operational Earnings per share (oeps): ebit / sharesoutstanding
+
+-   Operational epsebit deflated by stock price (oepsp) : eps_ebit / original stock price
+
+-   Book-to-market ratio (bmr): book value / market value. Use total assets as book value of the firm-quarter.
+
+**Do your own research and briefly explain what is earnings per share deflated by price, and book-to-market ratio**
+
+# Challenge 5. Review of Logistic Regression models
+
+**1. Using the uspanel dataset you have to run a logistic regression model to examine whether the operational earnings per share deflated by price (peps) is related to the probability that the firm ROA is greater than the corresponding industry ROA mean.**
+
+HINT: you can use the function glm specifying family="binomial":
+
+logit_model1 \<- glm(ROA_above \~ oepspw ,data = uspanel, family = "binomial",na.action = na.omit)
+
+**2. Learn about the logistic regression and interpret the result of this regression model (interpret the coefficient of this model and its significance.**
+
+# Challenge 6. Datacamp Course
+
+Go to the course: Machine Learning with caret in R and DO CHAPTER 2: **Classification models: fitting them and evaluating their performance**

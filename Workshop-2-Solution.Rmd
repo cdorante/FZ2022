@@ -1,0 +1,661 @@
+---
+title: "Workshop 2 Solution, Algorithms and data analysis"
+author: "Alberto Dorantes, Ph.D."
+date: "Oct 4, 2023"
+
+abstract: "This is a solution of Workshop 2. In this workshop we continue practicing with descriptive statistics, data understanding and financial data calculations. In addition, we run a logistic regression model."
+
+output:
+  html_document: 
+    number_sections: yes
+    toc: yes
+    toc_float: true
+    theme: united
+    highlight: zenburn
+  pdf_document: default
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      warning=FALSE, message=FALSE)
+```
+
+```{r,echo=FALSE}
+library(kableExtra)
+```
+
+# Introduction
+
+We will work with a panel data of real US public firms. You have to analyze historical quarterly financial statements of all US public firms listed in the New York Exchange and NASDAQ.
+
+This is the dataset you will use for the **Problem Situation** (Final Project) of this class.
+
+First, we will do descriptive statistics and visualization with the purpose of understanding the US financial market.
+
+You have to work with 2 datasets:
+
+-   firmsus2023.csv: List of all US public firms with general information of each firm
+
+-   dataus2023.csv : Panel data with historical financial quarterly data for all US public firms.
+
+You have to download these 2 files from Canvas/Modules and save in the directory where you have your workshop.
+
+The first dataset (dataus2023q2) contains the historical financial data of the firms, while the second dataset (firmsus2023) is a catalog of all firms along with the corresponding industry type and status (active or cancelled).
+
+The dataus2023q2 dataset has a panel-data (also called long format) structure. Each row has financial information for one US firm and 1 period (a quarter). All \$ amounts are in thousands ('1000s). Here is a data dictionary of the columns:
+
+| Variable           | Description                                                                                                                                                                                    |
+|--------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| firm               | Unique code of the company (also called ticker)                                                                                                                                                |
+| q                  | Quarter date                                                                                                                                                                                   |
+| fiscalmonth        | Month of the year when the firm closes a fiscal year                                                                                                                                           |
+| revenue            | Total sales of the firm from the first fiscal quarter to the current quarter                                                                                                                   |
+| cogs               | Cost of good sold - variable costs of the products sold - from the first fiscal quarter to the current quarter                                                                                 |
+| sgae               | Sales and general administrative expenses - from the first fiscal quarter to the current quarter                                                                                               |
+| otherincome        | Other operational income/expenses that are not directly from the core operations of the firm - from the first fiscal quarter to the current quarter                                            |
+| extraordinaryitems | Extra income/expenses not related to regular operations - from the first fiscal quarter to the current quarter                                                                                 |
+| finexp             | Financial expenses - interest expenses paid (generated from loans) - from the first fiscal quarter to the current quarter                                                                      |
+| incometax          | Income tax from the first fiscal quarter to the current quarter                                                                                                                                |
+| totalassets        | Total assets of the firm at the end of the quarter                                                                                                                                             |
+| currentassets      | Current assets of the firm at the end of the quarter                                                                                                                                           |
+| totalliabilities   | Total liabilities of the firm at the end of the quarter                                                                                                                                        |
+| currentliabilities | Current liabilities of the firm at the end of the quarter                                                                                                                                      |
+| longdebt           | Balance of long-term financial debt (loans to pay longer than 1 year)                                                                                                                          |
+| adjprice           | Stock adjusted price at the end of the quarter; adjusted for stock splits and dividend payments; used to calculate stock returns                                                               |
+| originalprice      | Historical stock price (not adjusted); used to calculate historical market value                                                                                                               |
+| sharesoutstanding  | Historical number of shares available in the market                                                                                                                                            |
+| fixedassets        | Fixed assets value at the end of the quarter                                                                                                                                                   |
+| year               | Calendar year                                                                                                                                                                                  |
+| yearf              | Fiscal year - this depends on when the firm ends its fiscal year; if fiscalmonth=12 in the quarter 3, then the fiscal year will start in Q4 of a year and ends in the Q3 of the following year |
+
+: Data dictionary of historical quarterly financial data.
+
+Each row of this dataset has quarterly financial data of one firm in one quarter. All firms have quarters from Q1 2000 to Q2 2023. Not all firms have existed since 2000, so if the first quarters are empty that means that the firm did not exist in the US financial market in those quarters. Then, it is possible to know when each firm went public to issue shares in the financial market: the first quarter with some non-empty data.
+
+Each firm has defined the month of the year used to close a fiscal year. For example, Apple closes the fiscal year at the end of Quarter 3 (end of September) of any year. Then, for Apple, in the Q3 of 2022, there will be a 12 for the fiscalmonth variable. In this case, Apple starts its fiscal year in the Q4 of each year and ends in the Q3 of the following year. Most of the firms (about 80%) close fiscal year in December, so these firms will have a 12 in the Q4 of each year.
+
+The variables related to sales and expenses are cumulative for each fiscal year. For example, Apple sold about \$117 billion in the last calendar quarter (Q4) of 2022, but this is the first fiscal quarter for Apple. For Q1 (calendar) 2023 (which is the 2nd fiscal quarter), Apple has about \$212 billion in the revenue variable, meaning that considering fiscal quarter 1 and 2, Apple has sold \$212 billion. For Q2 2023 Apple has about \$293 billion, meaning that the cumulative revenue of fiscal Q1, Q2 and Q3 is about \$293 billion. Then, if you select rows with fiscalmonth=12, then you will be selecting those quarters with annual financial information for each firm!
+
+The firmsus2023.csv is a catalog of all active and cancelled US firms:
+
+| Variable          | Description                                           |
+|-------------------|-------------------------------------------------------|
+| firm              | Unique code of the company (also called ticker)       |
+| name              | Name of the firm                                      |
+| status            | Status of the firm: active or cancelled               |
+| partind           | Percent participation in the S&P500 market index      |
+| naics1            | North American Industry Classification Code - Level 1 |
+| naics2            | North American Industry Classification Code - Level 2 |
+| SectorEconomatica | Economatica Industry classification                   |
+
+# Challenge 1: Data management algorithms
+
+We import the csv files into the R Environment:
+
+```{r}
+# To avoid scientific notation:
+options(scipen=999)
+
+#Read the csv files:
+uspanel <- read.csv("dataus2023.csv")
+usfirms <- read.csv("firmsus2023.csv")
+
+```
+
+As a quick check of the imported data, write the code do the following query:
+
+**1. Display the revenue and total assets for Apple for the annual fiscal quarters of 2022, 2021 and 2022. The annual quarters are those with fiscalmonth=12**
+
+Do an online check, find the most recent 10-K report (annual financial statement) of Apple, and compare 2022 annual sales with what you got. You must get the same amount for the annual sales reported at the end of fiscal year (for Apple, the fiscal year is Q3).
+
+This type of data management is also called *query*. A *query* is a search statement in a database.
+
+**APPROACH 1: Using sub-setting of data frames:**
+
+In the row index of the data frame I indicate the condition to Apple and the year equal or greater than 2020. In the column index I indicate to select only 4 relevant columns:
+
+```{r}
+# I assign the result of this query 
+APPLE_2022 = uspanel[uspanel$firm=="AAPL" & uspanel$yearf>=2020 & uspanel$fiscalmonth==12,
+                     c("firm","q","revenue","yearf","fiscalmonth")]
+# I saved the result of the query in a new dataset called APPLE_2020
+# I display the result:
+APPLE_2022
+
+```
+
+All the financial amounts in this dataset is in thousands (1000's). The fiscalmonth column is the fiscal month at the end of the quarter. The q column is the quarter. Since the fiscalmonth=12 is in the Quarters Q3 of each year, this indicates that Apple ends its fiscal year in the Q3, which is in September of each year.
+
+We can display only the annual 2022 sales of Apple as follows:
+
+```{r}
+APPLE_2022[APPLE_2022$yearf==2022,c("revenue")]
+
+```
+
+To report the amount in currency format, we can use the dollar function from the scales package (you have to install the scales package) as follows:
+
+```{r, warning=FALSE,message=FALSE}
+library(scales)
+APPLE_2022_ANNUALSALES = as.numeric(1000*APPLE_2022[,c("revenue")])
+# I used the as.numeric function since the dollar function only receives numeric variables:
+dollar(APPLE_2022_ANNUALSALES)
+```
+
+Then, we can say that in 2022 Apple reported annual total sales amount of `r dollar(APPLE_2022_ANNUALSALES)`. This is more than 390 billion dollars! (390 thousand of millions).
+
+**APPROACH 2: USING THE dplyr PACKAGE:**
+
+I use the filter function to select rows and select function to select columns:
+
+```{r, message=FALSE,warning=FALSE}
+library(dplyr)
+APPLE_2022 <- uspanel %>% 
+              filter(firm=="AAPL", yearf>=2020, fiscalmonth==12) %>%
+              select(firm,q,revenue,yearf,fiscalmonth)
+APPLE_2022
+```
+
+The rest is just formatting as shown in approach 1.
+
+**2. Using the panel dataset, write the algorithm to select active firms along with the quarters with annual financial data in 2022**
+
+Before doing basic descriptive statistics for the US market, you have to do some data management algorithms.
+
+To do this, you have to select firm-quarters with fiscalmonth=12, year=2022 and only active firms.
+
+In this dataset, we have quarterly financial data. For income-statement variables, the information reported is the cumulative amount from fiscal Q1 to the corresponding quarter of the fiscal year. For balance-sheet variables, the information is the value of the variable at the end of the corresponding quarter (since the beginning when the firm was created).
+
+The fiscal month variable indicates the following: if fiscalmonth=12, that means that the corresponding quarter is the end-of-the-fiscal-year quarter and the amounts for the income statement variables will be the annual amounts for the fiscal year.
+
+**Save the result in a new dataset called data2022.**
+
+**3. Using the data2022 dataset do the required algorithm to merge important firm characteristics to this panel dataset. You have to pull the following firm characteristics: Company name, status, and industry (naics1).**
+
+**Since the status column is NOT in the uspanel, I actually need to do challenge 2.3 first and then solve for challenge 2.2!**
+
+You have to pull the following firm characteristics: Company name, status, and industry (naics1).
+
+**In the panel dataset we do not have general information of each firm such as firm name, industry, status (active or cancelled), etc. So, we start by integrating this information into the panel data:**
+
+```{r}
+# I create a dataset with only the relevant columns to be merged: 
+usfirms1<- usfirms %>% select(empresa,Nombre,status,naics1)
+
+```
+
+To integrate the usfirms into the panel dataset uspanel, we can use the merge function. This is equivalent to the vlookup Excel function. We want to pull the industry, company name and status into the panel dataset, so we can do queries using these columns.
+
+Before using the merge function, it is very important to identify the 2 columns that have to *match*. In this case, it is the ticker or firm code that we can use to link both datasets.
+
+We have a problem here. The firm code has different column name in both datasets, then I can specify R which will be the columns to be used to do the merging:
+
+```{r}
+# I do the merge indicating to match both files using the firm column that is in both datasets:
+
+uspanel <- merge(uspanel,usfirms1,by.x="firm", by.y="empresa")
+```
+
+The by.x refers to the first dataset, and by.y refers to the second dataset (usfirms1)
+
+In case both columns have the same column name (firm), you can run merge as:
+
+uspanel \<- merge(uspanel,usfirms1,by="firm")
+
+**Now I can do challenge 2, which is to create the data2022 dataset:**
+
+```{r}
+data2022 <- uspanel %>%
+          filter(status=="activo",yearf==2022, fiscalmonth==12)
+```
+
+This new dataset is not a panel data anymore since we only have one period for all firms. This dataset structure can be classified as **cross-sectional** dataset.
+
+We can count the \# active firms in 2022 in the US using the nrow function:
+
+```{r}
+nrow(data2022)
+```
+
+There were `r nrow(data2022)` active public firms in the US market in 2022.
+
+We can also check how many of these firms end the fiscal quarter in the Q4 of the year:
+
+```{r}
+firmsbyQ<- table(data2022$q)
+firmsbyQ
+```
+
+The table function counts the \# of cases of the different values of the variable (in this case, the variable q). We see that more than 80% of the firms end the fiscal year in the Q4 (`r firmsbyQ[4]` firms out of `r sum(firmsbyQ)`).
+
+# Challenge 2: Code for descriptive statistics for 2022
+
+Using the data2022 dataset, you have to do the following descriptive statistics and respond the following questions.
+
+You have to calculate market capitalization (marketcap) in this dataset. You can calculate a new column as follows:
+
+marketcap = original stock price \* shareoutstanding.
+
+This is the market value of the firm in each quarter. We use the original stock price (before stock splits and dividend adjustments) since the \# of shares outstanding is the historical \# of shares:
+
+```{r}
+data2022$marketcap = data2022$originalprice * data2022$sharesoutstanding
+```
+
+The 2022 market value for all firms was calculated in the column marketcap of the data2022 dataset.
+
+**1. Show and interpret the median, 25 and 75 percentile of total assets and market capitalization (market value) of the active US firms in 2022**
+
+There are many functions in R to get descriptive statistics. We can use the function summary, which is part of the base R functions:
+
+We do the summary for total assets:
+
+```{r}
+ta_summary <- summary(data2022$totalassets)
+ta_summary
+```
+
+Remember that values are stored in thousands ('1,000s) of US dollars.
+
+**INTERPRETATION:**
+
+**About the median size: The typical firm size (the median) of US public companies in 2022 in terms of total assets is `r dollar(as.numeric(1000*ta_summary[3]))`** .
+
+**About quartile 1: In 2022, about 25% of the US public firms had a total assets equal or less than `r dollar(as.numeric(1000*ta_summary[2]))`**.
+
+**About quartile 3: In 2022, about 75% of the US public fims had a total assets equal or less than `r dollar(as.numeric(1000*ta_summary[5]))`**.
+
+Now for market capitalization:
+
+```{r}
+mcap_summary<- summary(data2022$marketcap)
+mcap_summary
+```
+
+**INTERPRETATION:**
+
+**About the median size: The typical firm size (the median) of US public companies in 2022 in terms of total assets is `r dollar(as.numeric(1000*mcap_summary[3]))`** .
+
+**About quartile 1: In 2022, about 25% of the US public firms had a total assets equal or less than `r dollar(as.numeric(1000*mcap_summary[2]))`**.
+
+**About quartile 3: In 2022, about 75% of the US public fims had a total assets equal or less than `r dollar(as.numeric(1000*mcap_summary[5]))`**.
+
+**2. By industry show the \# of firms, median, 25 and 75 percentile of total assets and market capitalization (market value) of the active US firms in 2022**
+
+```{r}
+by_industry_summary<- data2022 %>%
+  group_by(naics1) %>%
+  summarize(firms = n(),
+            median_tot_assets = median(totalassets, na.rm = TRUE),
+            Q1_total_assets = quantile(totalassets, probs=c(0.25),na.rm = TRUE),
+            Q3_totassets = quantile(totalassets,probs=c(0.75),na.rm=TRUE),
+            median_marketcap = median(marketcap, na.rm = TRUE),
+            Q1_marketcap = quantile(marketcap, probs=c(0.25),na.rm=TRUE),
+            Q3_marketcap = quantile(marketcap,probs=c(0.75),na.rm=TRUE)
+            )
+```
+
+We display the results:
+
+```{r, eval=FALSE}
+by_industry_summary
+
+```
+
+```{r, echo=FALSE}
+by_industry_summary %>%
+  # kbl(caption = "Discount scenarios") %>%
+  # kable_classic(full_width = F, html_font = "Cambria")
+  kbl() %>%
+  kable_paper("hover", full_width = F)
+```
+
+**3. Which are the 10 biggest active firms in terms of total assets according to the end of fiscal year of 2022? Show the name of the firms, the industry and total assets.**
+
+We have to sort the data2022 dataset by total assets and select the first 10 rows and the columns firm, Nombre, industry (naics1), and total assets:
+
+```{r}
+top_10_tassets <- data2022 %>%
+     arrange(desc(totalassets)) %>%
+     top_n(10, totalassets) %>%
+     select(firm, Nombre, naics1, totalassets, revenue)
+```
+
+We display the result:
+
+```{r,eval=FALSE}
+top_10_tassets
+
+```
+
+```{r, echo=FALSE}
+top_10_tassets %>%
+  kbl() %>%
+  kable_paper("hover", full_width = F)
+```
+
+**In terms of total assets, the biggest firm in the US is: `r top_10_tassets$CompanyName[1]`.**
+
+**4. Which are the 10 biggest active firms in terms of market capitalization? Show the name of the firms, the industry and market value as of 2022**
+
+We do the same as above, but now for the market capitalization variable:
+
+```{r}
+top_10_mcap <- data2022 %>%
+     arrange(desc(marketcap)) %>%
+     top_n(10) %>%
+     select(firm, Nombre, naics1, marketcap, revenue)
+
+```
+
+We display the result:
+
+```{r, eval=FALSE}
+top_10_mcap
+
+```
+
+```{r, echo=FALSE}
+top_10_mcap %>%
+  # kbl(caption = "Discount scenarios") %>%
+  # kable_classic(full_width = F, html_font = "Cambria")
+  kbl() %>%
+  kable_paper("hover", full_width = F)
+```
+
+**In terms of market value, the biggest firm in the US is: `r top_10_mcap$CompanyName[1]`.**
+
+**5. Show and interpret a histogram of the 2022 market capitalization for all ACTIVE firms**
+
+```{r}
+hist(data2022$marketcap)
+```
+
+This is a typical *skewed-to-the-right distribution* since there are very few very extreme positive values. Due to the very extreme values of market capitalization of firms, the histogram is not well appreciated. We can change the number of *bins* or *breaks* of the histogram, so that we can better appreciate the distribution of the variable in the range where most firms are located in terms of market capitalization:
+
+```{r}
+hist(data2022$marketcap, breaks=40)
+
+```
+
+We can see that most of the firms have a market capitalization that is less than \$US 250 billion.
+
+To better appreciate the distribution of most of the firms excluding those with very extreme values, we can filter the dataset as follows:
+
+```{r}
+firm_selection1 <- data2022 %>%
+            filter(marketcap <=250000000) %>%
+            select(firm, marketcap)
+hist(firm_selection1$marketcap, breaks=40)
+```
+
+We can still see that most of these selected firms have a market cap less than \$USD 20 billion. We could keep selecting firms with less market capitalization to better appreciate the distribution of most of the firms:
+
+```{r}
+firm_selection2 <- data2022 %>%
+            filter(marketcap <=50000000) %>%
+            select(firm, marketcap)
+hist(firm_selection2$marketcap, breaks=40)
+```
+
+Even with this selection, we still see that the distribution is very skewed to the right with extreme values of market capitalization.
+
+**6. For each industry show and interpret a box plot to better understand the size of active firms in 2022 (use the market capitalization)**
+
+```{r, message=FALSE,warning=FALSE}
+library(ggplot2)
+ggplot(data2022, aes(x=naics1, y=marketcap)) +
+   geom_boxplot()
+```
+
+Here we have 2 visualization problems: 1) We cannot easily visualize the market capitalization of 50% of the firms by industry, which is the *box* for each industry (Quartiles fro Q1 to Q3), and 2) The x labels for the industry names cannot be read.
+
+To solve the first problem, since there are too many very extreme values for market capitalization, we can **winsorize** this variable to *flatten* the big values of market capitalization.
+
+In statistics, winsorization is the process to treat extreme values, which are also called *outliers*. The winsorization process replace the very extreme values at a specific percentile with a value of the variable in that percentile.
+
+Here we apply a winsorization at the 95 percentiles for big values of market capitalization:
+
+```{r}
+library(statar)
+data2022$marketcap_w <- winsorize(data2022$marketcap, probs = c(0,0.95))
+
+
+```
+
+We created a **winsorized** market capitalization for the purpose of visualization of the variable. The process of winsorization is also used for regression analysis since outliers can bias the estimation of the regression results. We will learn that later.
+
+For the second problem, we can add an option to the ggplot to indicate that we want to display the x labes in vertical wah (90 degrees of inclination):
+
+```{r, message=FALSE,warning=FALSE}
+ggplot(data2022, aes(x=naics1, y=marketcap_w)) +
+   geom_boxplot() +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+Now we have a better appreciation of the market capitalization ranges for each industry.
+
+# Challenge 3. Setting the dataset as panel data
+
+**Using the plm package, indicate R that uspanel is a panel data, which has firm column for the subjects and quarter (q) for the time variable. Keep the same name of uspanel.**
+
+You can check how we did this in Workshop 1.
+
+```{r}
+library(plm)
+uspanel <- pdata.frame(uspanel, index= c("firm","q"))
+
+```
+
+Now the uspanel dataset is explicitly declared to be a panel data with firm as the subject dimension and q as the time dimension. We can see the class of this R object:
+
+```{r}
+class(uspanel)
+```
+
+Now the uspanel is a pdata.frame R object, so we can start doing calculations with **lagged** values such as return calculations and financial ratio calculations.
+
+# Challenge 4. Calculating financial variables
+
+You have to write the code to calculate the following financial variables and financial ratios for all firms-quarters of US firms.
+
+**1. Using the original panel dataset (uspanel), create columns for the following variables:**
+
+-   Gross profit (grossprofit): Revenue - Cost of good Sold
+-   Earnings before interest and taxes (ebit): Gross profit - Sales & general administrative expenses
+-   Net Income (netincome): ebit + otherincome + extraordinaryitems - financial expenses - income taxes
+-   Market capitalization: (marketcap): original stock price \* shareoutstanding.
+
+I do this with dplyr:
+
+```{r}
+uspanel <- uspanel %>%
+  mutate(grossprofit = revenue - cogs,
+         ebit = grossprofit - sgae,
+         netincome = ebit + otherincome + extraordinaryitems - finexp - incometax,
+         marketcap = originalprice * sharesoutstanding)
+
+```
+
+marketcap is the market value of the firm in each quarter. We use the original stock price (before stock splits and dividend adjustments) since the \# of shares outstanding is the historical \# of shares.
+
+Check that we used original stock price, not adjusted stock price. In financial markets, the adjusted stock prices are calculated after considering dividend payments and stock splits. A stock split is when a firm decides to divide the value of its stock price by 2, 3 or other multiple with the only purpose to avoid the perception that the stock is expensive. For example, late August 2020 Apple and Tesla decided to do stock split. Apple did a split on a 4-for-1 basis. This means that if the stock price was about USD \$400.00 on that day, then its price was reduced to USD\$100.00, but they multiplied the number of shares (shares outstanding) by 4 to keep the same market value of the firm. In this historical dataset the shares outstanding is the historical, so we need to use the historical/original stock price without considering stock splits nor dividend payments.
+
+-   Annual market return: use adjusted stock price and remember that you have quarterly data.
+
+Here we have to use the **lagged** value of adjusted stock price:
+
+In this case I do not use dplyr since it does not work with the lag function from plm:
+
+```{r}
+uspanel$annual_R = uspanel$adjprice / plm::lag(uspanel$adjprice,k=4) - 1
+```
+
+We can also calculate the continuously compounded annual return using the diff function as follows:
+
+```{r}
+uspanel$annual_r = diff(log(uspanel$adjprice),lag=4)
+
+```
+
+**2. Using the same panel dataset (uspanel), create columns for the following financial ratios:**
+
+-   Operational Return on Assets (roabit): roabit divided by total assets at the beginning of the period. Total assets of the beginning of the year is actually the total assets of ONE year ago.
+
+$$
+roabit=\frac{ebit_{t}}{totalassets_{t-4}}
+$$
+
+Here we can use the lag function of the plm package to get value of total assets one year ago, which is 4 quarters ago.
+
+However, when calculating financial ratios it is always important to check whether the variable in the denominator of the ratio has one or more zeros. When we divide an amount by zero, it is not possible to determine a value. Actually, the result is infinite. R stores infinite values as Inf.
+
+We can either check whether the variable in the denominator has zero values, and then use a conditional to indicate which result we want in the case that the denominator is equal to zero.
+
+Let's install the psych package that has a nice function to describe a variable:
+
+```{r}
+library(psych)
+
+```
+
+Use the function describe for the denominator of the variable:
+
+```{r}
+describe(uspanel$totalassets)
+```
+
+We see that the minimum value is zero, so we can have troubles calculating the roabit ratio. Then we can use the ifelse function to indicate which value we want in the case of a zero value in the denominator:
+
+```{r}
+
+uspanel$roabit = ifelse(plm::lag(uspanel$totalassets,k=4)==0,NA, uspanel$ebit / plm::lag(uspanel$totalassets,k=4))
+```
+
+Now we can check whether there is no Inf values in the new ratio:
+
+```{r}
+describe(uspanel$roabit)
+```
+
+We can keep using the ifelse for all ratios without checking for the zeros.
+
+-   Return on Assets (roa):
+
+$$
+roa=\frac{netincome_{t}}{totalassets_{t-4}}
+$$
+
+```{r}
+uspanel$roa = ifelse(plm::lag(uspanel$totalassets,k=4)==0,NA,uspanel$netincome / plm::lag(uspanel$totalassets,k=4))
+
+```
+
+-   Operational Earnings per share (oeps): ebit / sharesoutstanding
+-   Operational epsebit deflated by stock price (oepsp) : oeps / original stock price
+-   Book-to-market ratio (bmr): book value / market value. Use total assets as book value of the firm-quarter. Book-value can be calculated as (totalassets - totalliabilites)
+
+I calculate these variables with dplyr:
+
+```{r}
+uspanel <- uspanel %>%
+  mutate(oeps = ifelse(sharesoutstanding==0,NA,ebit / sharesoutstanding),
+         oepsp= ifelse(originalprice==0,NA,oeps / uspanel$originalprice),
+         bmr = ifelse(marketcap==0,NA,(totalassets-totalliabilities) / marketcap))
+```
+
+The right way to calculate book value is the following: accounting book value is the difference between total assets and total liabilities. In other words, accounting book value of a company is the accounting shareholder equity plus retained earnings.
+
+**Do your own research and briefly explain what is earnings per share deflated by price, and book-to-market ratio**
+
+*EARNINGS PER SHARE IS EQUAL TO EARNINGS DIVIDED BY THE \# OF SHARES. THE MEASURE FOR EARNINGS IS NET INCOME. HOWEVER, SOME ANALYSTS ALSO USE OTHER OPERATIONAL MEASURES FOR EARNINGS SUCH AS EARNINGS BEFORE INTEREST AND TAXES (EBIT). IF WE WANT TO MEASURE OPERATIONAL EARNINGS AND CALCULATE IT FOR MANY FIRMS, IT IS RECOMMENDED TO USE EBIT AS A MEASURE OF EARNINGS.*
+
+*THE FORMULA OF EPS USING NET INCOME AS A MEASURE OF EARNINGS IS:*
+
+$$
+EPS_{t}=\frac{NETINCOME_{t}}{\#OFSHARES_{t}}
+$$
+
+THE FORMULA FOR EPS USING EBIT AS A MEASURE OF EARNINGS IS:\*
+
+$$
+EPS_{t}=\frac{EBIT_{t}}{\#OFSHARES_{t}}
+$$ *IN A HYPOTHETICAL SCENARIO, IF THE ALL EARNINGS OF A PERIOD t WERE PAYED TO THE INVESTORS, THEN EPS WILL BE HOW MUCH OF ALL EARNINGS OF THE PERIOD IS PAYED TO EACH SHARE OWN BY INVESTORS.*
+
+**WHAT IS BOOK-TO-MARKET RATIO?**
+
+**Book-to-maret ratio (bmr) is the ratio of accounting book value of the firm to its market value. In other words, it results by dividing book value by the market value of the firm at a specific time period.**
+
+If bmr=1 means that the firm book value is about the same as firm market value. If that is the case, then the market value has not grown beyond book-value, meaning that the firm has not created value beyond its book value.
+
+If bmr\>1 means that the market value is less than book value. So, if bmr\>1 means that the firm has significantly lost shareholder's wealth, and it might incur in bankrupt risk.
+
+Then, what would be the bmr level that all firms are looking for? One of the main purposes of the executives is to MAXIMIZE shareholder's value. The way to increase shareholder's value is to increase its market value, and the only way to increase market value is to increase stock price.
+
+Then, the bmr level that all executives prefer is a value much less than 1.
+
+If bmr=0.5 means that the firm market value is the double of its book value. In this case, the main difference between market value and book value is the wealth that the firm has created thanks to its valuable intangible assets such as prestige, high quality, and innovation.
+
+Then, what do you think it might be the relationship between bmr and stock return? Intuitively, we might think that a small value of bmr is a good news, then the stock return might be related in a negative way. If bmr goes down (good news), then the stock return might go up. Then, it might be expected that the relationship between bmr and stock return is linear and negative. Some finance research (like Fama & French, 1995), mainly with US firms has found that the relationship between bmr and future stock return is negative.
+
+However, there are mixed findings about the relationship between bmr and stock returns. Some research (like Piotrosky, 2000) has found that firms with high bmr, but strong financials (like earnings per share) usually provides significant positive stock returns. In this special case, bmr has found to be positively related to stock returns.
+
+Finance research has found that bmr influences earnings per share, which in turn influences current and future stock returns. It is some times that firms with low bmr do not experience significant high stock returns due to the high expectations of investors. This is an interesting finding in finance that is still being researched!
+
+# Challenge 5. Review of Logistic Regression models
+
+1.  Using the uspanel dataset you have to run a logistic regression model to examine whether the operational earnings per share deflated by price (peps) is related to the probability that the firm ROA is greater than the corresponding industry ROA mean.
+
+HINT: you can use the function glm specifying family="binomial":
+
+logit_model1 \<- glm(ROA_above \~ oepspw ,data = uspanel, family = "binomial",na.action = na.omit)
+
+2.  Learn about the logistic regression and interpret the result of this regression model (interpret the coefficient of this model and its significance.
+
+```{r}
+uspanel <- uspanel %>%
+   group_by(naics1, q) %>% 
+   mutate(ROAmean = mean(roa, na.rm=TRUE)) 
+
+```
+
+Now I can generate a variable to identify which firms have a ROA higher that the mean ROA of its industry:
+
+```{r}
+uspanel <- uspanel %>%
+  mutate(ROA_above = ifelse(roa>ROAmean,1,0))
+```
+
+We can check how many cases have ROA_above=1 and how many cases have ROA_above=0 in the dataset:
+
+```{r}
+table(uspanel$ROA_above)
+```
+
+Before running the logistic regression, we will select only active firms:
+
+```{r}
+uspanelactive <- uspanel[uspanel$status=="active",]
+
+```
+
+Now I run a logistic model to examine wether operating earnings per share is related to the probability that a firm has a ROA higher than the mean of the ROA of its industry.
+
+The dependent variable is the binary variable ROA_above:
+
+```{r}
+logit_model1 <- glm(ROA_above ~ oepsp ,data = uspanel, family = "binomial",na.action = na.omit)
+smodel1 <- summary(logit_model1)
+smodel1
+
+```
+
+We see that the beta coefficient of oepsp is very close to zero and its pvalue is much greater than 0.05. This means that there is no significant evidence to say that operating earnings per share is related to the probability that a firm has a ROA greater that the ROA of its industry.
+
+Before making conclusion that oepsp has no relationship with the probability of a firm to have ROA higher than the industry average, we have to check some data issues that might affect our model:
+
+-   Extreme values of independent variables. In this case, it is very likely that oepsp has very extreme values. We will learn about a method called winsorization to treat extreme values.
+
+-   Treatment of income-statement variables in this dataset. Remember that these variables have Year-to-date amounts (cumulative amounts). This might cause a problem for the calculation or ROA and epsp since the numerator of these variables is netincome and operating earnings that increase each quarter within each year. We can try selecting only rows with the last fiscal quarter of each year (fiscalmonth==12)
+
+We will learn more details about the logistic regression model in the next workshop.

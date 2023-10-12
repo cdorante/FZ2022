@@ -1,0 +1,94 @@
+---
+title: "Workshop 3, Algorithms and data analysis"
+author: "Alberto Dorantes, Ph.D."
+date: "Oct 2, 2023"
+
+abstract: "This is an INDIVIDUAL workshop. In this workshop we will keep practicing data management for financial massive data and also learn about the Logistic regression model and an introduction to Machine Learning." 
+
+output:
+  html_document: 
+    number_sections: yes
+    toc: yes
+    toc_float: true
+    theme: united
+    highlight: zenburn
+  pdf_document: default
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+We will continue working with the dataset  of the Final Project (dataus2023).
+
+The dataset can be downloaded from Canvas:
+
+We will learn a) what is winsorization and why it is important, b) estimate and interpret a logistic regression, and c) training vs testing samples, and d) creating a confusion matrix.
+
+# CHALLENGE 1: Winsorization of variables
+
+
+You have to do your own research about winsorization. Explain it with your words (pay attention in class)
+
+You have to install the statar package. You have to winsorize the following ratio:
+
+- Earnings per share deflated by price
+
+This winsorize function automatically finds a good level of winsorization according to the distribution of all values of the variable.  
+
+# CHALLENGE 2: Algorithm to do many-to-one merge
+
+Write a data management algorithm to do the following:
+
+1) Download the monthly market index of the S&P500 (^GSPC) from 1999 to date
+2) Convert (collapse) from monthly to quarterly index selecting the last index of each quarter
+3) Calculate market quarterly returns
+3) Do a many-to-one algorithm to add a new column to the us panel dataset that has the market quarterly return
+
+Pay attention in class
+
+# CHALLENGE 3: Logistic regression models with lagged values
+
+Design and run a logistic  regression to examine whether earnings per share deflated by price winsorized (epspw) is related to the probability that the future quarterly stock returns is higher than the future market quarterly return.
+
+Pay attention in class to learn how to run a logistic regression model, and how to indicate to use future or lagged values for variables in the model.
+
+**You have to interpret the model**
+
+# CHALLENGE 4: Running your first Machine Learning model
+(moved to week 4)
+
+Create a dataset with  the following columns:
+
+- Future quarterly stock return (1 quarter later) 
+- F1r_above_market (1=beat the market in the corresponding quarter; 0= otherwise)
+- Earnings per share deflated by price (epsp).
+
+Create a training and testing sample: randomly select 80% of observations for the training sample and 20% for the testing sample.
+
+Using the training sample, run the same logistic model to check whether epsp has explanatory power for the probability that the stock beats the market.
+
+Create and interpret the confusion matrix 
+
+
+**It is strongly recommended to review the Chapter 2 of the Datacamp course: "Machine Learning with Caret"** 
+
+
+# W3 submission
+
+The grade of this Workshop will be the following:
+
+-  Complete (100%): If you submit an ORIGINAL and COMPLETE HTML file with all the activities, with your notes, and with your OWN RESPONSES to questions
+
+-  Incomplete (75%): If you submit an ORIGINAL HTML file with ALL the activities but you did NOT RESPOND to the questions and/or you did not do all activities and respond to some of the questions. 
+
+- Very Incomplete (10%-70%): If you complete from 10% to 75% of the workshop or you completed more but parts of your work is a copy-paste from other workshops. 
+
+- Not submitted (0%) 
+
+Remember that you have to submit your .html file through Canvas BEFORE NEXT CLASS.
+
+
